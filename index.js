@@ -3,7 +3,7 @@ require('dotenv').config()
 const cors = require('cors');
 // const path = require('path');
 const corsOptions = require('./config/CorsOption');
-// const dbconnect = require('./config/dbConnect');
+const dbconnect = require('./config/dbConnect');
 // const credentialsMiddleware = require('./middleware/credentials');
 // const ErrorHandler = require('./middleware/ErrorHandle');
 // const Logger = require('./middleware/logger');
@@ -11,12 +11,12 @@ const cookieParser = require("cookie-parser");
 // const cron = require('node-cron');
 // const { scheduleDailyUpdate } = require('./Controllers/application/OrganizationJourney');
 
-// dbconnect.connect()
-// .then(() => console.log('Database connected successfully'))
-// .catch((err) => {
-//     console.error('Database connection failed', err);
-//     process.exit(1);
-// });
+dbconnect.connect()
+.then(() => console.log('Database connected successfully'))
+.catch((err) => {
+    console.error('Database connection failed', err);
+    process.exit(1);
+});
 const app = express();
 
 // app.use(express.static(path.join(__dirname, 'public')));
