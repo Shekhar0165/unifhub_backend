@@ -7,7 +7,7 @@ const corsOptions = require('./config/CorsOption');
 // const credentialsMiddleware = require('./middleware/credentials');
 // const ErrorHandler = require('./middleware/ErrorHandle');
 // const Logger = require('./middleware/logger');
-// const cookieParser = require("cookie-parser");
+const cookieParser = require("cookie-parser");
 // const cron = require('node-cron');
 // const { scheduleDailyUpdate } = require('./Controllers/application/OrganizationJourney');
 
@@ -30,7 +30,7 @@ const app = express();
 
 app.use(cors(corsOptions));
 
-// app.use(cookieParser());
+app.use(cookieParser());
 
 // Middleware to parse JSON and URL-encoded data
 app.use(express.json());
@@ -46,7 +46,7 @@ app.use(express.json());
 // Define a route
 
 // Routes 
-// app.use('/', require('./routes/Register'));
+app.use('/', require('./routes/Register'));
 // app.use('/', require('./routes/RefreshToken'));
 // app.use('/user', require('./routes/api/User'));
 // app.use('/org', require('./routes/api/Organization'));
