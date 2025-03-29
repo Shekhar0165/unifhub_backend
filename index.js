@@ -25,9 +25,16 @@ const app = express();
 // Use credentials middleware before CORS
 // app.use(credentialsMiddleware);
 
+// Handle options credentials check - before CORS!
+// and fetch cookies credentials requirement
+app.use((req, res, next) => {
+    const origin = req.headers.origin;
+    if (corsOptions.origin && origin) {
+        res.header('Access-Control-Allow-Credentials', true);
+    }
+    next();
+});
    
-
-
 app.use(cors(corsOptions));
 
 app.use(cookieParser());
@@ -47,7 +54,7 @@ app.use(express.json());
 
 // Routes 
 app.use('/', require('./routes/Register'));
-// app.use('/', require('./routes/RefreshToken'));
+app.use('/', require('./routes/RefreshToken'));
 // app.use('/user', require('./routes/api/User'));
 // app.use('/org', require('./routes/api/Organization'));
 // app.use('/reset', require('./routes/ResetPassword'));
