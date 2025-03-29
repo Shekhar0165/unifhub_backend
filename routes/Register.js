@@ -1,15 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const { registerUser,IsEmailVerify,SendVerificationCode,registerOrganization } = require('../Controllers/authentication/Register');
+const { registerUser, IsEmailVerify, SendVerificationCode, registerOrganization } = require('../Controllers/authentication/Register');
 const { LoginUser } = require('../Controllers/authentication/Login');
-// const {LogoutUser} = require('../Controllers/authentication/Logout')
+const { LogoutUser } = require('../Controllers/authentication/Logout');
 
-// Refresh token route
+// Authentication routes
 router.post('/student/register', registerUser);
 router.post('/org/register', registerOrganization);
 router.post('/verify-otp', IsEmailVerify);
 router.post('/send-otp', SendVerificationCode);
 router.post('/login', LoginUser);
-// router.get('/logout', LogoutUser);
+router.get('/logout', LogoutUser);
 
 module.exports = router;

@@ -4,7 +4,7 @@ const cors = require('cors');
 // const path = require('path');
 const corsOptions = require('./config/CorsOption');
 const dbconnect = require('./config/dbConnect');
-// const credentialsMiddleware = require('./middleware/credentials');
+const credentialsMiddleware = require('./middleware/credentials');
 // const ErrorHandler = require('./middleware/ErrorHandle');
 // const Logger = require('./middleware/logger');
 const cookieParser = require("cookie-parser");
@@ -23,17 +23,17 @@ const app = express();
 
 
 // Use credentials middleware before CORS
-// app.use(credentialsMiddleware);
+app.use(credentialsMiddleware);
 
 // Handle options credentials check - before CORS!
 // and fetch cookies credentials requirement
-app.use((req, res, next) => {
-    const origin = req.headers.origin;
-    if (corsOptions.origin && origin) {
-        res.header('Access-Control-Allow-Credentials', true);
-    }
-    next();
-});
+// app.use((req, res, next) => {
+//     const origin = req.headers.origin;
+//     if (corsOptions.origin && origin) {
+//         res.header('Access-Control-Allow-Credentials', true);
+//     }
+//     next();
+// });
    
 app.use(cors(corsOptions));
 
@@ -55,20 +55,20 @@ app.use(express.json());
 // Routes 
 app.use('/', require('./routes/Register'));
 app.use('/', require('./routes/RefreshToken'));
-// app.use('/user', require('./routes/api/User'));
-// app.use('/org', require('./routes/api/Organization'));
-// app.use('/reset', require('./routes/ResetPassword'));
-// app.use('/events',require('./routes/api/Events'))
-// app.use('/Participants',require('./routes/api/Participants'))
-// app.use('/team',require('./routes/api/Team'))
-// app.use('/journey',require('./routes/api/OrganizationJourney'))
-// app.use('/userevent',require('./routes/api/UserEvents'))
-// app.use('/userresume',require('./routes/api/UserResume'))
-// app.use('/events/teams',require('./routes/api/EventsMember'))
-// app.use('/user-activity', require('./routes/api/UserActivity'))
-// app.use('/org-reviews', require('./routes/api/OrganizationReview'))
-// app.use('/event-reviews', require('./routes/api/EventReview'))
-// app.use('/org-activity', require('./routes/api/OrganizationActivity'))
+app.use('/user', require('./routes/api/User'));
+app.use('/org', require('./routes/api/Organization'));
+app.use('/reset', require('./routes/ResetPassword'));
+app.use('/events',require('./routes/api/Events'))
+app.use('/Participants',require('./routes/api/Participants'))
+app.use('/team',require('./routes/api/Team'))
+app.use('/journey',require('./routes/api/OrganizationJourney'))
+app.use('/userevent',require('./routes/api/UserEvents'))
+app.use('/userresume',require('./routes/api/UserResume'))
+app.use('/events/teams',require('./routes/api/EventsMember'))
+app.use('/user-activity', require('./routes/api/UserActivity'))
+app.use('/org-reviews', require('./routes/api/OrganizationReview'))
+app.use('/event-reviews', require('./routes/api/EventReview'))
+app.use('/org-activity', require('./routes/api/OrganizationActivity'))
 
 
 app.get("/", (req, res) => {
