@@ -14,10 +14,15 @@ const HandleAddEvent = async (req, res) => {
             maxTeamMembers, minTeamMembers
         } = req.body;
 
-        const img = req.file ? req.file.filename : "";
+        // Check if a file was uploaded
+        let image_path = "";
+        if (req.file && req.file.s3) {
+            // Use S3 URL instead of local path
+            image_path = req.file.s3.url;
+        }
 
         // Validate input
-        if (!organization_id || !eventName || !eventDate || !venue || !category || !maxTeamMembers || !minTeamMembers ||!img) {
+        if (!organization_id || !eventName || !eventDate || !venue || !category || !maxTeamMembers || !minTeamMembers) {
             return res.status(400).json({ message: "All required fields must be provided" });
         }
 
@@ -36,9 +41,17 @@ const HandleAddEvent = async (req, res) => {
         const eventStatus = new Date(eventDate) < currentDate ? "past" : "upcoming";
 
         const newEvent = new Event({
-            organization_id:organization_id, eventName, description, content, image_path:`/${img}`,
-            eventDate, time, venue, category,
-            maxTeamMembers, minTeamMembers,
+            organization_id: organization_id, 
+            eventName, 
+            description, 
+            content, 
+            image_path, // S3 URL 
+            eventDate, 
+            time, 
+            venue, 
+            category,
+            maxTeamMembers, 
+            minTeamMembers,
             status: eventStatus,
             totalparticipants: 0,
             totalteams: 0
@@ -83,12 +96,12 @@ const HandleUpdateEvents = async (req, res) => {
             return res.status(400).json({ message: "Invalid event ID" });
         }
 
-        // Extract text fields from req.body
+        // Extract fields from req.body
         const updatedData = { ...req.body };
 
-        // If there's an image, handle it
-        if (req.file) {
-            updatedData.image = req.file.buffer; // Store image in DB (or save it to a folder)
+        // If a file was uploaded, add S3 URL to updatedData
+        if (req.file && req.file.s3) {
+            updatedData.image_path = req.file.s3.url;
         }
 
         const updatedEvent = await Event.findByIdAndUpdate(eventId, updatedData, { new: true });
@@ -102,6 +115,7 @@ const HandleUpdateEvents = async (req, res) => {
         res.status(500).json({ message: "Error updating event", error: error.message });
     }
 };
+
 // Delete an event
 const HandleDeleteEvents = async (req, res) => {
     try {
@@ -129,7 +143,6 @@ const HandleDeleteEvents = async (req, res) => {
         return res.status(500).json({ message: "Failed to delete event" });
     }
 };
-
 
 // Declare positions of participants in an event
 const HandleDeclarePostion = async (req, res) => {
@@ -173,7 +186,6 @@ const HandleGetAllEvents = async (req, res) => {
     }
 };
 
-
 const HandleGetEventByOrganization = async (req, res) => {
     try {
         const {_id}  = req.body;
@@ -187,6 +199,7 @@ const HandleGetEventByOrganization = async (req, res) => {
         res.status(500).json({ message: "Error fetching events", error: error.message });
     }
 }
+
 const HandleGetOneEvent = async (req, res) => {
     try {
         const {_id}  = req.body;
@@ -198,16 +211,68 @@ const HandleGetOneEvent = async (req, res) => {
         const events = await Event.find({_id})
         res.status(200).json(events);
     } catch (error) {
-        res.status(500).json({ message: "Error fetching events", error: error.message });
+        res.status(500).json({ message: "Error fetching event", error: error.message });
     }
-}
+};
 
-module.exports = { 
-    HandleAddEvent, 
-    HandleUpdateEvents, 
-    HandleDeleteEvents, 
-    HandleDeclarePostion, 
-    HandleGetAllEvents, 
+// Register user for an event
+const HandleRegisterForEvent = async (req, res) => {
+    try {
+        const { eventId } = req.params;
+        const { userId, teamName, teamMembers } = req.body;
+
+        if (!mongoose.Types.ObjectId.isValid(eventId)) {
+            return res.status(400).json({ message: "Invalid event ID" });
+        }
+
+        const event = await Event.findById(eventId);
+        if (!event) {
+            return res.status(404).json({ message: "Event not found" });
+        }
+
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: "User not found" });
+        }
+
+        // Check if user is already registered
+        const alreadyRegistered = event.registrations.some(reg => 
+            reg.userId && reg.userId.toString() === userId
+        );
+
+        if (alreadyRegistered) {
+            return res.status(400).json({ message: "User already registered for this event" });
+        }
+
+        // Add registration
+        const newRegistration = {
+            userId,
+            teamName,
+            teamMembers,
+            registrationDate: new Date()
+        };
+
+        event.registrations.push(newRegistration);
+        event.totalparticipants += 1;
+        if (teamName) {
+            event.totalteams += 1;
+        }
+
+        await event.save();
+
+        res.status(200).json({ message: "Successfully registered for event", event });
+    } catch (error) {
+        res.status(500).json({ message: "Error registering for event", error: error.message });
+    }
+};
+
+module.exports = {
+    HandleAddEvent,
+    HandleUpdateEvents,
+    HandleDeleteEvents,
+    HandleDeclarePostion,
+    HandleGetAllEvents,
+    HandleRegisterForEvent,
     HandleGetEventByOrganization,
     HandleGetOneEvent
 };

@@ -1,4 +1,8 @@
 const Organization = require('../../models/Organizations');
+const S3UploadHandler = require('../../middleware/s3Upload');
+
+// Initialize S3 upload handler for organization files
+const orgS3Handler = new S3UploadHandler('organizations');
 
 // Get an organization by ID
 const HandleGetOrganization = async (req, res) => {
@@ -18,6 +22,7 @@ const HandleGetOrganization = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
+
 const HandleGetOrganizationForUser = async (req, res) => {
     try {
         const {userid }= req.body; 
@@ -34,6 +39,7 @@ const HandleGetOrganizationForUser = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
+
 const HandleGetAllOrganization = async (req, res) => {
     try {
         const organization = await Organization.find({});
@@ -48,6 +54,21 @@ const HandleGetAllOrganization = async (req, res) => {
     }
 };
 
+// Handle getting a pre-signed URL for S3 uploads
+const HandleGetUploadUrl = async (req, res) => {
+    try {
+        // This will set up and return a pre-signed URL
+        return orgS3Handler.getUploadUrl(req, res);
+    } catch (error) {
+        console.error('Error generating upload URL:', error);
+        return res.status(500).json({ 
+            success: false, 
+            message: 'Server error', 
+            error: error.message 
+        });
+    }
+};
+
 // Update organization information
 const HandleUpdateOrganization = async (req, res) => {
     try {
@@ -57,15 +78,19 @@ const HandleUpdateOrganization = async (req, res) => {
         let updates = {};
         if (req.body.orgData) {
             updates = JSON.parse(req.body.orgData);
+        } else {
+            updates = { ...req.body };
         }
         
-        // Add file paths if files were uploaded
+        // Add file paths from S3 if files were uploaded
         if (req.files) {
             if (req.files.profileImage) {
-                updates.profileImage = `/org/${req.files.profileImage[0].filename}`;
+                // Use S3 URL instead of local path
+                updates.profileImage = req.files.profileImage[0].s3.url;
             }
             if (req.files.coverImage) {
-                updates.coverImage = `/org/${req.files.coverImage[0].filename}`;
+                // Use S3 URL instead of local path
+                updates.coverImage = req.files.coverImage[0].s3.url;
             }
         }
         
@@ -206,10 +231,10 @@ const HandleAddTeam = async (req, res) => {
         const newTeam = {
             name,
             head,
-            members: members ? members.map(member => new Map(Object.entries(member))) : []
+            members: members || []
         };
         
-        organization.teams.push(newTeam);
+        organization.team.push(newTeam);
         await organization.save();
         
         res.status(201).json({ 
@@ -222,7 +247,7 @@ const HandleAddTeam = async (req, res) => {
     }
 };
 
-// Update organization social links
+// Update social links for organization
 const HandleUpdateSocialLinks = async (req, res) => {
     try {
         const { id } = req.params;
@@ -238,14 +263,12 @@ const HandleUpdateSocialLinks = async (req, res) => {
             return res.status(404).json({ message: 'Organization not found' });
         }
         
-        // Create a new Map from the provided socialLinks object
-        organization.socialLinks = new Map(Object.entries(socialLinks));
-        
+        organization.socialLinks = socialLinks;
         await organization.save();
         
         res.status(200).json({ 
             message: 'Social links updated successfully',
-            socialLinks: Object.fromEntries(organization.socialLinks)
+            socialLinks: organization.socialLinks
         });
     } catch (error) {
         console.error('Error updating social links:', error);
@@ -253,59 +276,52 @@ const HandleUpdateSocialLinks = async (req, res) => {
     }
 };
 
+// Update a team member
 const HandleUpdateTeamMember = async (req, res) => {
     try {
-        const { id } = req.params;  // Extracting id from request parameters
-        const updatedTeam = req.body;  // Extracting updated team data from request body
-
-        // Find the organization by ID
-        const org = await Organization.findById(id);
-
-        // Check if organization exists
-        if (!org) {
-            return res.status(404).json({
-                success: false,
-                message: "Organization not found"
-            });
+        const { id } = req.params; // Organization ID
+        const { teamId, memberId, updates } = req.body;
+        
+        if (!teamId || !memberId || !updates) {
+            return res.status(400).json({ message: 'Team ID, member ID, and updates are required' });
         }
-
-        // Find the team and update members
-        let teamFound = false;
-        org.teams.forEach(team => {
-            if (team.name === updatedTeam.name) {
-                team.members = updatedTeam.members;
-                teamFound = true;
-            }
-        });
-
-        if (!teamFound) {
-            return res.status(404).json({
-                success: false,
-                message: "Team not found"
-            });
+        
+        const organization = await Organization.findById(id);
+        
+        if (!organization) {
+            return res.status(404).json({ message: 'Organization not found' });
         }
-
-        // Save the updated organization
-        await org.save();
-
-        res.status(200).json({
-            success: true,
-            message: "Team member updated successfully",
-            organization: org  // Returning the updated organization
+        
+        // Find the team
+        const team = organization.team.id(teamId);
+        
+        if (!team) {
+            return res.status(404).json({ message: 'Team not found' });
+        }
+        
+        // Find and update the member
+        const memberIndex = team.members.findIndex(m => m._id.toString() === memberId);
+        
+        if (memberIndex === -1) {
+            return res.status(404).json({ message: 'Team member not found' });
+        }
+        
+        // Update member properties
+        Object.keys(updates).forEach(key => {
+            team.members[memberIndex][key] = updates[key];
         });
-
-    } catch (error) {  // Handling errors
-        console.error("Failed to update team member:", error);
-        res.status(500).json({
-            success: false,
-            message: "Failed to update team member",
-            error: error.message  // Returning error message
+        
+        await organization.save();
+        
+        res.status(200).json({ 
+            message: 'Team member updated successfully',
+            team: team
         });
+    } catch (error) {
+        console.error('Error updating team member:', error);
+        res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
-
-
-
 
 module.exports = {
     HandleGetOrganization,
@@ -317,5 +333,6 @@ module.exports = {
     HandleUpdateSocialLinks,
     HandleGetAllOrganization,
     HandleUpdateTeamMember,
-    HandleGetOrganizationForUser
+    HandleGetOrganizationForUser,
+    HandleGetUploadUrl
 };

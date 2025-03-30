@@ -20,6 +20,7 @@ const HandleGetUser = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
+
 const HandleGetForProfile = async (req, res) => {
     try {
         const id = req.params.userid; // Authenticated user's ID'
@@ -38,7 +39,6 @@ const HandleGetForProfile = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
-
 
 const HandleSearchUser = async (req, res) => {
   try {
@@ -61,8 +61,6 @@ const HandleSearchUser = async (req, res) => {
   }
 };
 
-
-
 // Update user information
 const HanldeUpdateUser = async (req, res) => {
     try {
@@ -72,15 +70,19 @@ const HanldeUpdateUser = async (req, res) => {
       let updates = {};
       if (req.body.userData) {
         updates = JSON.parse(req.body.userData);
+      } else {
+        updates = { ...req.body };
       }
       
-      // Add file paths if files were uploaded
+      // Add file paths from S3 if files were uploaded
       if (req.files) {
         if (req.files.profileImage) {
-          updates.profileImage = `/user/${req.files.profileImage[0].filename}`;
+          // Use S3 URL instead of local path
+          updates.profileImage = req.files.profileImage[0].s3.url;
         }
         if (req.files.coverImage) {
-          updates.coverImage = `/user/${req.files.coverImage[0].filename}`;
+          // Use S3 URL instead of local path
+          updates.coverImage = req.files.coverImage[0].s3.url;
         }
       }
       
@@ -128,7 +130,6 @@ const HandleDeleteUser = async (req, res) => {
         res.status(500).json({ message: 'Server error', error: error.message });
     }
 };
-
 
 // Update password with verification
 const HandleUpdatePassword = async (req, res) => {
