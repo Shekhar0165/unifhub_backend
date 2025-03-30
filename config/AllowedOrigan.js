@@ -5,8 +5,8 @@ AllowedOrigan = [
     "https://unifhub-backend.vercel.app",
     "https://unifhiub-backend.vercel.app",
     "https://unifhub-backend.onrender.com",
-    "http://15.207.181.25:3000",
-    "http://15.207.181.25:8000",
+    "http://13.203.171.150:3000",
+    "http://13.203.171.150:8000",
     "http://172.31.1.108:3000",
     "http://172.31.1.108:8000"
 ]
