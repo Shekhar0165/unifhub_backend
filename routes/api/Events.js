@@ -4,11 +4,11 @@ const {
     HandleAddEvent,
     HandleUpdateEvents,
     HandleDeleteEvents,
-    HandleDeclarePostion,
     HandleGetAllEvents,
     HandleRegisterForEvent,
     HandleGetEventByOrganization,
     HandleGetOneEvent,
+    HandleUPComingEventsForUser
 } = require('../../Controllers/application/Events');
 const auth = require('../../middleware/auth');  // Authentication middleware
 const MulterConfig = require('../../config/Multer');
@@ -31,8 +31,8 @@ router.put('/update/:eventId', auth, EventUpdate.single('image'), s3Upload.uploa
 // Route to delete an event by ID (Protected)
 router.delete('/delete/:eventId', auth, HandleDeleteEvents);
 
-// Route to declare winners/positions for an event (Protected)
-router.post('/declare/:eventId', auth, HandleDeclarePostion);
+router.get('/upcoming/:userId', HandleUPComingEventsForUser);
+
 
 router.post('/getevents', auth, HandleGetEventByOrganization);
 router.post('/one', auth, HandleGetOneEvent);

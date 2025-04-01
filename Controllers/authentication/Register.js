@@ -6,7 +6,7 @@ const Otp = require('../../config/GenerateOtp');
 const jwt = require('jsonwebtoken');
 const { tr } = require('date-fns/locale');
 const { generateUserResume } = require('../../Controllers/application/UserResume');
-const { generateOrganizationJourney } = require('../../Controllers/application/OrganizationJourney');
+const journey = require('../../models/OrganizationJourney');
 
 const otpInstances = {}; // Store OTP instances and verification status
 
@@ -137,7 +137,7 @@ const createInitialUserResume = async (userId, user) => {
     try {
         // Check if user already has a resume
         let userResume = await UserResume.findOne({ UserId: userId });
-        
+
         if (!userResume) {
             // Create a new resume with registration achievement
             userResume = new UserResume({
@@ -149,11 +149,11 @@ const createInitialUserResume = async (userId, user) => {
                     metrics: { achievementType: 'registration' }
                 }]
             });
-            
+
             await userResume.save();
             console.log(`Created initial resume for user ${userId}`);
         }
-        
+
         return userResume;
     } catch (err) {
         console.error('Error creating initial user resume:', err);
@@ -163,7 +163,7 @@ const createInitialUserResume = async (userId, user) => {
 
 const registerUser = async (req, res) => {
     try {
-        const { name, userid, email, password, university, bio, location, phone } = req.body;
+        const { name, userid, email, password, location } = req.body;
 
         // Validate all fields
         if (!name || !userid || !email || !password) {
@@ -171,6 +171,7 @@ const registerUser = async (req, res) => {
                 message: 'All fields are required: name, userid, email, and password.'
             });
         }
+        userid = userid.toLowerCase();
 
         // Validate email format
         if (!validateEmail(email)) {
@@ -216,10 +217,10 @@ const registerUser = async (req, res) => {
             userid,
             email,
             password: hashedPassword,
-            university,
-            bio,
-            location,
-            phone
+            university: "",
+            bio: "",
+            location: "",
+            phone: ""
         });
 
         await newUser.save();
@@ -274,11 +275,11 @@ const registerUser = async (req, res) => {
             message: 'User registered successfully',
             user: {
                 userid: newUser.userid,
-                userType:"individual"
+                userType: "individual"
             },
             accessToken,
             refreshToken,
-            
+
         });
 
     } catch (err) {
@@ -290,8 +291,7 @@ const registerUser = async (req, res) => {
 
 const registerOrganization = async (req, res) => {
     try {
-        const { name,userid, email,password, university, bio, location, phone,  } = req.body;
-        console.log({ name,userid, email,password, university, bio, location, phone,  });
+        const { name, userid, email, password} = req.body;
 
         // Validate required fields
         if (!name || !email) {
@@ -299,6 +299,7 @@ const registerOrganization = async (req, res) => {
                 message: 'Required fields missing: name and email are required.'
             });
         }
+        userid = userid.toLowerCase();
 
         // Validate email format
         if (!validateEmail(email)) {
@@ -328,12 +329,10 @@ const registerOrganization = async (req, res) => {
         const newOrganization = new Organization({
             name,
             userid,
-            password:hashedPassword,
-            university,
-            bio,
-            location,
+            password: hashedPassword,
+            university: "",
+            bio: "",
             email,
-            phone,
             // socialLinks: socialLinks ? new Map(Object.entries(socialLinks)) : new Map(),
             activities: {
                 thisMonth: 0,
@@ -346,18 +345,23 @@ const registerOrganization = async (req, res) => {
             }
         });
 
-        await newOrganization.save();
+        const org = await newOrganization.save();
 
-        // Generate organization journey in the background
-        generateOrganizationJourney(newOrganization._id)
-            .then(journey => {
-                if (journey) {
-                    console.log(`Journey created for organization ${newOrganization._id}`);
-                }
-            })
-            .catch(err => {
-                console.error("Error creating organization journey:", err);
-            });
+        console.log("Organization registered successfully:", org._id);
+
+        const journeyData = {
+            OrganizationId: org._id,
+            Journey: [{
+                title: "Joined UnifHub",
+                Date: new Date(),
+                description: `${org.name} joined UnifHub and started their journey.`,
+                achievementType: 'registration' 
+            }]
+        };
+
+        await journey.create(journeyData)
+            .then(() => console.log("Organization journey created successfully"))
+            .catch(err => console.error("Error creating organization journey:", err));
 
         // Generate JWT tokens
         const accessToken = jwt.sign(
@@ -402,9 +406,9 @@ const registerOrganization = async (req, res) => {
         // Send tokens in response body for localStorage
         return res.status(201).json({
             message: 'Organization registered successfully',
-            organization: {
+            user: {
                 userid: newOrganization.userid,
-                usertype:"Organization"
+                usertype: "Organization"
             },
             accessToken,
             refreshToken

@@ -4,7 +4,7 @@ const Organization = require('../../models/Organizations');
 
 const handleRefreshToken = async (req, res) => {
     // Try to get the token from cookie first, then from request body
-    const token = req.cookies.refreshToken || req.body.refreshToken;
+    const token = req.cookies.refreshToken;
 
     if (!token) {
         return res.status(401).json({ message: 'Refresh token is required.' });

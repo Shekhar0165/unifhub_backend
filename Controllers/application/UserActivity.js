@@ -32,7 +32,11 @@ const updateGitHubActivity = async (userId) => {
             return null;
         }
         
-        const githubUsername = user.socialLinks.github.trim();
+        const githubUsername = user.socialLinks.github.replace(/\/$/, "").split("/").pop();
+        if(!githubUsername) {
+            console.log(`No GitHub username found for user ${userId}`);
+            return null;
+        }
         // Extract just the username if a full URL was provided
         const usernameMatch = githubUsername.match(/github\.com\/([^\/]+)/);
         const username = usernameMatch ? usernameMatch[1] : githubUsername;
@@ -98,6 +102,7 @@ const updateGitHubActivity = async (userId) => {
             
             // Save the updated activity record
             await userActivity.save();
+            console.log(`GitHub activity updated for user ${userId}, score: ${userActivity.githubActivity.score}`);
             
             return userActivity.githubActivity;
         } catch (error) {
@@ -247,7 +252,7 @@ const calculateUserScore = async (userId) => {
         updateStreakAndContributions(userActivity);
         
         // Save the updated activity record
-        await userActivity.save();
+        // await userActivity.save();
         
         return userActivity;
     } catch (error) {
@@ -433,7 +438,6 @@ const getWeekNumber = (date) => {
 exports.getUserActivity = async (req, res) => {
     try {
         const { userId } = req.params;
-        console.log('user ',userId)
         
         if (!userId) {
             return res.status(400).json({ message: 'User ID is required' });
@@ -441,6 +445,7 @@ exports.getUserActivity = async (req, res) => {
         
         // Calculate latest activity scores
         const userActivity = await calculateUserScore(userId);
+        console.log("funcstion over")
         
         // Get user details
         const user = await User.findById(userId);
@@ -448,6 +453,8 @@ exports.getUserActivity = async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
+
+        await userActivity.populate();
         
         return res.status(200).json({
             message: 'User activity data retrieved successfully',

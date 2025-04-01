@@ -4,6 +4,7 @@ const Organization = require("../../models/Organizations");
 const mongoose = require("mongoose");
 const { addFirstEventAchievement } = require("./OrganizationJourney");
 const { addEventScore } = require("./OrganizationActivity");
+const Participants = require("../../models/Participants");
 
 // Add a new event
 const HandleAddEvent = async (req, res) => {
@@ -54,7 +55,8 @@ const HandleAddEvent = async (req, res) => {
             minTeamMembers,
             status: eventStatus,
             totalparticipants: 0,
-            totalteams: 0
+            totalteams: 0,
+            organizer: organization.name,
         });
 
         await newEvent.save();
@@ -120,7 +122,9 @@ const HandleUpdateEvents = async (req, res) => {
 const HandleDeleteEvents = async (req, res) => {
     try {
         const { eventId } = req.params;
+        console.log("eventId", eventId)
         const authId = req.user.id;
+        console.log("authId", authId)
         
         if(!authId){
             return res.status(400).json({ message: "Invalid user ID" });
@@ -130,9 +134,17 @@ const HandleDeleteEvents = async (req, res) => {
             return res.status(400).json({ message: "Invalid event ID" });
         }
 
-        if(eventId !== authId){
-            return res.status(400).json({ message: "You are not authorized to delete this event" });
+        const organization = await Organization.findById(authId);
+        if (!organization) {
+            return res.status(404).json({ message: "Organization not found" });
         }
+
+        // Check if the event belongs to the organization
+        const checkedEvent = await Event.find({ _id: eventId, organization_id: authId });
+        if (checkedEvent.length === 0) {
+            return res.status(404).json({ message: "Event not found for this organization" });
+        }
+
 
         await Event.findByIdAndDelete(eventId);
 
@@ -144,35 +156,7 @@ const HandleDeleteEvents = async (req, res) => {
     }
 };
 
-// Declare positions of participants in an event
-const HandleDeclarePostion = async (req, res) => {
-    try {
-        const { eventId } = req.params;
-        const { participants } = req.body; // Array of participants with { participant_id, position }
-
-        if (!mongoose.Types.ObjectId.isValid(eventId)) {
-            return res.status(400).json({ message: "Invalid event ID" });
-        }
-
-        const event = await Event.findById(eventId);
-        if (!event) {
-            return res.status(404).json({ message: "Event not found" });
-        }
-
-        // Validate positions
-        if (!Array.isArray(participants) || participants.length === 0) {
-            return res.status(400).json({ message: "Participants data is required" });
-        }
-
-        event.participants = participants;
-        event.status = "completed"; // Change status when declaring positions
-        await event.save();
-
-        res.status(200).json({ message: "Positions declared successfully", event });
-    } catch (error) {
-        res.status(500).json({ message: "Error declaring positions", error: error.message });
-    }
-};
+;
 
 // Get all events
 const HandleGetAllEvents = async (req, res) => {
@@ -266,13 +250,59 @@ const HandleRegisterForEvent = async (req, res) => {
     }
 };
 
+const HandleUPComingEventsForUser = async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        console.log("userId", userId);
+
+        if (!mongoose.Types.ObjectId.isValid(userId)) {
+            return res.status(400).json({ message: "Invalid user ID" });
+        }
+
+        // Find participants where the user is listed
+        const participants = await Participants.find({
+            "participant_id.id": userId
+        });
+
+        if (!participants || participants.length === 0) {
+            return res.status(404).json({ message: "No upcoming events found" });
+        }
+
+        // Extract event IDs
+        const eventIds = participants.map(p => p.eventid);
+        
+        // Find events based on extracted event IDs
+        const events = await Event.find({ _id: { $in: eventIds } });
+
+        if (!events || events.length === 0) {
+            return res.status(404).json({ message: "No events found" });
+        }
+
+        console.log("events", events);
+
+        // Format event data for frontend
+        const upcomingEvents = events.map(event => ({
+            title: event.eventName,
+            status: "Registered", // You can modify this based on participant data
+            date: event.eventDate,
+            location: event.venue,
+            organizer: event.organizer,
+        }));
+
+        res.json({ upcomingEvents });
+    } catch (error) {
+        res.status(500).json({ message: "Error fetching events", error: error.message });
+    }
+};
+
+
 module.exports = {
     HandleAddEvent,
     HandleUpdateEvents,
     HandleDeleteEvents,
-    HandleDeclarePostion,
     HandleGetAllEvents,
     HandleRegisterForEvent,
     HandleGetEventByOrganization,
-    HandleGetOneEvent
+    HandleGetOneEvent,
+    HandleUPComingEventsForUser
 };

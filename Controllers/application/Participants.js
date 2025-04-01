@@ -229,6 +229,7 @@ const HandleUpdateParticipants = async (req, res) => {
         const { id } = req.params;
         const { teamName, position } = req.body;
 
+
         // Find participant by id
         const participant = await Participants.findById(id);
         if (!participant) {
@@ -272,6 +273,7 @@ const HandleUpdateParticipants = async (req, res) => {
 const HandleDeleteParticipants = async (req, res) => {
     try {
         const { id } = req.params;
+        console.log({ id })
 
         // Find and delete participant
         const deletedParticipant = await Participants.findByIdAndDelete(id);
@@ -317,7 +319,7 @@ const HandleDeclareResult = async (req, res) => {
     try {
         const { eventid, results } = req.body;
 
-        console.log({ eventid, results })
+        console.log({ eventid, results });
 
         // Validate event exists
         const event = await Event.findById(eventid);
@@ -325,17 +327,34 @@ const HandleDeclareResult = async (req, res) => {
             return res.status(404).json({ message: "Event not found" });
         }
 
-        // results should be an array of objects with teamName and position
+        // Extract only the date part (YYYY-MM-DD) from eventDate and current date
+        const eventDate = event.eventDate.toISOString().slice(0, 10);
+        const currentDate = new Date().toISOString().slice(0, 10);
+
+        console.log("Event Date:", eventDate);
+        console.log("Current Date:", currentDate);
+
+        // Check if event date is different from today's date
+        if (eventDate !== currentDate) {
+            return res.status(400).json({ message: "Event has not started yet." });
+        }
+
+        // Check if event is ongoing
+        if (event.status !== "ongoing") {
+            return res.status(400).json({ message: "Event is not Completed Yet" });
+        }
+
+        // Validate results array
         if (!Array.isArray(results) || results.length === 0) {
             return res.status(400).json({ message: "Results must be a non-empty array" });
         }
 
-        // Get organization details for achievement descriptions
+        // Get organization details
         const organization = await Organization.findById(event.organization_id);
         const orgName = organization ? organization.name : "Unknown organization";
 
-        // Update positions for all teams in the results array
-        const updatePromises = results.map(result => {
+        // Update positions for teams
+        const updatePromises = results.map((result) => {
             return Participants.findOneAndUpdate(
                 { eventid, teamName: result.teamName },
                 { position: Number(result.position) },
@@ -346,30 +365,23 @@ const HandleDeclareResult = async (req, res) => {
         const updatedParticipants = await Promise.all(updatePromises);
 
         // Update event status to completed
-        await Event.findByIdAndUpdate(eventid, { status: 'completed' });
+        await Event.findByIdAndUpdate(eventid, { status: "completed" });
 
-        // Add achievements for all participants based on their positions
+        // Add achievements for participants
         for (const team of updatedParticipants) {
             if (!team) continue;
-            
-            // Skip teams with no position (position 0)
             if (team.position === 0) continue;
-            
+
             for (const participant of team.participant_id) {
                 const userId = participant.id;
-                
-                // Check if this is the user's first completed event
-                await trackFirstEventCompletion(
-                    userId, 
-                    eventid, 
-                    event.eventName, 
-                    orgName
-                );
-                
-                // Create position-based achievement
+
+                // Track first event completion
+                await trackFirstEventCompletion(userId, eventid, event.eventName, orgName);
+
+                // Create achievement based on position
                 let title = `Participated in ${event.eventName}`;
                 let description = `Completed ${event.eventName} organized by ${orgName}.`;
-                
+
                 if (team.position === 1) {
                     title = `Won first place in ${event.eventName}`;
                     description = `Won first place in ${event.eventName} organized by ${orgName}.`;
@@ -380,40 +392,31 @@ const HandleDeclareResult = async (req, res) => {
                     title = `Won third place in ${event.eventName}`;
                     description = `Won third place in ${event.eventName} organized by ${orgName}.`;
                 }
-                
+
                 await addUserAchievement(userId, {
                     title,
                     description,
                     date: new Date(),
                     metrics: {
-                        achievementType: 'event_completion',
+                        achievementType: "event_completion",
                         eventId: eventid,
                         position: team.position,
-                        organizationId: event.organization_id
-                    }
-                });
-                
-                // Update user's event position
-                await User.updateOne(
-                    { 
-                        _id: userId,
-                        "events.eventid": eventid
+                        organizationId: event.organization_id,
                     },
-                    {
-                        $set: { "events.$.position": team.position }
-                    }
-                );
+                });
             }
         }
 
         res.status(200).json({
             message: "Results declared successfully",
-            updatedParticipants
+            updatedParticipants,
         });
     } catch (error) {
+        console.error("Error declaring results:", error);
         res.status(500).json({ message: "Error declaring results", error: error.message });
     }
-}
+};
+
 
 const HandleEditResult = async (req, res) => {
     try {

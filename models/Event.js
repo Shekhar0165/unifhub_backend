@@ -75,6 +75,10 @@ const EventsSchema = new mongoose.Schema({
         type: Boolean,
         default: false
     },
+    organizer:{
+        type: String,
+        required: true
+    },
     rating: { 
         average: { type: Number, default: 0 },
         count: { type: Number, default: 0 }

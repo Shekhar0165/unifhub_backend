@@ -17,10 +17,11 @@ const validatePassword = (password) => {
 
 const LoginUser = async (req, res) => {
   const { identifier, password } = req.body;
-  console.log({ identifier, password });
+
+  const Newidentifier = identifier.toLowerCase();
 
   // Basic validation
-  if (!identifier || !password) {
+  if (!Newidentifier || !password) {
     return res.status(400).json({ message: 'Login ID and password are required.' });
   }
 
@@ -35,14 +36,13 @@ const LoginUser = async (req, res) => {
   try {
     // Check if identifier belongs to a User
     const user = await User.findOne({
-      $or: [{ userid: identifier }, { email: identifier }]
+      $or: [{ userid: Newidentifier }, { email: Newidentifier }]
     });
 
-    console.log("user",user)
     
     // Check if identifier belongs to an Organization
       const organization = await Organization.findOne({
-        $or: [{ userid: identifier }, { email: identifier }]
+        $or: [{ userid: Newidentifier }, { email: Newidentifier }]
       });
 
     // If neither a user nor an organization exists, return an error
@@ -60,7 +60,9 @@ const LoginUser = async (req, res) => {
       return res.status(401).json({ message: 'Invalid credentials.' });
     }
 
-    const userid = account.userid;
+    let userid = account.userid;
+
+    userid = userid.toLowerCase();
 
     // Generate JWT access token (expires in 1 day)
     const accessToken = jwt.sign(

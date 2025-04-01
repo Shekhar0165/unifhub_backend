@@ -14,8 +14,7 @@ const EventMemberSchema = new mongoose.Schema({
         required: true // Fixed spelling
     },
     eventViceHead: {
-        type: String,
-        required: true // Fixed spelling
+        type: String
     },
     eventTeams: [{
         teamId: {
