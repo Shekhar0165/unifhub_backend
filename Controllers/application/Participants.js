@@ -9,7 +9,6 @@ const { updateUserActivityAfterEvent } = require('./UserActivity')
 const HandleAddParticipants = async (req, res) => {
     try {
         const { eventid, participant_ids, teamName } = req.body;
-        console.log({ eventid, participant_ids, teamName })
 
         // Check if event exists
         const event = await Event.findById(eventid);
@@ -36,12 +35,17 @@ const HandleAddParticipants = async (req, res) => {
             return res.status(404).json({ message: "One or more participants not found" });
         }
 
+        //any user are not paricipated in this event
+        const alreadyParticipated = await Participants.findOne({ eventid, participant_id: { $in: userIds } });
+        if (alreadyParticipated) {
+            return res.status(400).json({ message: "One or more participants have already registered for this event" });
+        }
         // Format participant data according to new schema
         const formattedParticipants = users.map(user => ({
             id: user._id.toString(),
             name: user.name,
             userid: user.userid,
-            profileImage:user.profileImage ? user.profileImage : ''
+            profileImage:user.profileImage ? user.profileImage : null
         }));
 
         // Create new participant entry
@@ -516,11 +520,8 @@ const HandleGetParticipantsByUserId = async (req, res) => {
         // Find participants where participant_id array contains an object with the given userid
         const participants = await Participants.find({
             eventid: eventid,
-            participant_id: { $elemMatch: { id: userid } }
+            "participant_id.id": userid
         });
-        
-
-        console.log(participants)
 
         if (participants.length === 0) {
             return res.status(404).json({
@@ -532,13 +533,24 @@ const HandleGetParticipantsByUserId = async (req, res) => {
 
         // Get the team details
         const team = participants[0];
-        
+
+        // Fetch user details including profile image
+        const formattedParticipants = await Promise.all(
+            team.participant_id.map(async (user) => {
+                const findUser = await User.findById(user.id);
+                return {
+                    ...user.toObject(),
+                    ProfileImage: findUser?.profileImage || ""
+                };
+            })
+        );
+
         res.status(200).json({
             message: "Participants retrieved successfully",
-            count: team.participant_id.length,
+            count: formattedParticipants.length,
             newParticipants: {
                 teamName: team.teamName,
-                participants: team.participant_id
+                participants: formattedParticipants
             }
         });
     } catch (error) {
@@ -549,6 +561,7 @@ const HandleGetParticipantsByUserId = async (req, res) => {
         });
     }
 };
+
 
 module.exports = {
     HandleAddParticipants,

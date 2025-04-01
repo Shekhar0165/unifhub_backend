@@ -163,7 +163,7 @@ const createInitialUserResume = async (userId, user) => {
 
 const registerUser = async (req, res) => {
     try {
-        const { name, userid, email, password, location } = req.body;
+        let { name, userid, email, password } = req.body;
 
         // Validate all fields
         if (!name || !userid || !email || !password) {
@@ -291,7 +291,7 @@ const registerUser = async (req, res) => {
 
 const registerOrganization = async (req, res) => {
     try {
-        const { name, userid, email, password} = req.body;
+        let { name, userid, email, password} = req.body;
 
         // Validate required fields
         if (!name || !email) {
@@ -408,7 +408,7 @@ const registerOrganization = async (req, res) => {
             message: 'Organization registered successfully',
             user: {
                 userid: newOrganization.userid,
-                usertype: "Organization"
+                userType: "Organization"
             },
             accessToken,
             refreshToken
