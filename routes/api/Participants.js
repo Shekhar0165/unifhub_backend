@@ -11,7 +11,8 @@ const {
     HandleCheckTeam,
     HandleGetParticipantsByEvent,
     HandleGetParticipantsByUserId,
-    HandleUpdateParticipantsTeam
+    HandleUpdateParticipantsTeam,
+    HandleSearchParticipants
 } = require('../../Controllers/application/Participants');
 const auth = require('../../middleware/auth');
 
@@ -25,6 +26,7 @@ router.get('/for-events/:eventid', HandleGetParticipantsByEvent);
 router.post('/user', auth, HandleGetParticipantsByUserId);
 router.post('/declareResult',auth, HandleDeclareResult);
 router.post('/update-team', HandleUpdateParticipantsTeam);
+router.post('/available/search',auth, HandleSearchParticipants);
 
 
 

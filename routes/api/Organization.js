@@ -48,7 +48,5 @@ router.put('/update-team/:id', auth, HandleUpdateTeamMember);
 router.post('/team/:id', auth, HandleAddTeam);
 router.put('/:id/social-links', auth, HandleUpdateSocialLinks);
 
-// Keep the image renderer for backward compatibility
-router.get('/:filename', (req, res) => ImageRender.renderImage(req, res));
 
 module.exports = router;

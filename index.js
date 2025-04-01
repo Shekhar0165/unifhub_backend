@@ -19,7 +19,6 @@ dbconnect.connect()
 });
 const app = express();
 
-app.use(express.static(path.join(__dirname, 'public')));
 
 
 // Use credentials middleware before CORS

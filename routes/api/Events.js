@@ -58,7 +58,5 @@ router.post('/upload/:eventId', auth, EventUpdate.single('image'), s3Upload.uplo
     }
 });
 
-// Keep the image renderer for backward compatibility
-router.get('/images/:filename', (req, res) => ImageRender.renderImage(req, res));
 
 module.exports = router;

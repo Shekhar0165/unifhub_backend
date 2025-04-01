@@ -9,6 +9,7 @@ const { updateUserActivityAfterEvent } = require('./UserActivity')
 const HandleAddParticipants = async (req, res) => {
     try {
         const { eventid, participant_ids, teamName } = req.body;
+        console.log({ eventid, participant_ids, teamName })
 
         // Check if event exists
         const event = await Event.findById(eventid);
@@ -30,13 +31,13 @@ const HandleAddParticipants = async (req, res) => {
         // Get user details for all participants
         const userIds = participant_ids;
         const users = await User.find({ _id: { $in: userIds } });
-        
+
         if (users.length !== userIds.length) {
             return res.status(404).json({ message: "One or more participants not found" });
         }
 
         //any user are not paricipated in this event
-        const alreadyParticipated = await Participants.findOne({ eventid, participant_id: { $in: userIds } });
+        const alreadyParticipated = await Participants.findOne({ eventid,  "participant_id.id": userIds });
         if (alreadyParticipated) {
             return res.status(400).json({ message: "One or more participants have already registered for this event" });
         }
@@ -45,7 +46,7 @@ const HandleAddParticipants = async (req, res) => {
             id: user._id.toString(),
             name: user.name,
             userid: user.userid,
-            profileImage:user.profileImage ? user.profileImage : null
+            profileImage: user.profileImage ? user.profileImage : null
         }));
 
         // Create new participant entry
@@ -75,7 +76,7 @@ const HandleAddParticipants = async (req, res) => {
                     // Add event to user's event list
                     user.events.push({ eventid, position: 0 });
                     await user.save();
-                    
+
                     // Add achievement for registering for the event
                     await addUserAchievement(id, {
                         title: `Registered for ${event.eventName}`,
@@ -86,7 +87,7 @@ const HandleAddParticipants = async (req, res) => {
                             organizationId: event.organization_id
                         }
                     });
-                    
+
                     // Update user activity score
                     await updateUserActivityAfterEvent(id);
                 }
@@ -118,11 +119,11 @@ const HandleAddParticipants = async (req, res) => {
 
 
 
-const HandleUpdateParticipantsTeam = async (req,res)=>{
+const HandleUpdateParticipantsTeam = async (req, res) => {
     try {
         const { eventid, teamName, participant_ids } = req.body;
         console.log({ eventid, teamName, participant_ids })
-        
+
         // Validate required fields
         if (!eventid || !teamName || !participant_ids) {
             return res.status(400).json({ message: "Event ID, team name, and participant IDs are required" });
@@ -148,7 +149,7 @@ const HandleUpdateParticipantsTeam = async (req,res)=>{
         // Get user details for all participants
         const userIds = participant_ids;
         const users = await User.find({ _id: { $in: userIds } });
-        
+
         if (users.length !== userIds.length) {
             return res.status(404).json({ message: "One or more participants not found" });
         }
@@ -160,7 +161,7 @@ const HandleUpdateParticipantsTeam = async (req,res)=>{
             userid: user.userid,
             profileImage: user.profileImage ? user.profileImage : ''
         }));
-        
+
         const updatedParticipant = await Participants.findOneAndUpdate(
             { eventid, teamName },
             { $push: { participant_id: { $each: formattedParticipants } } },
@@ -183,7 +184,7 @@ const HandleUpdateParticipantsTeam = async (req,res)=>{
                     // Add event to user's event list
                     user.events.push({ eventid, position: 0 });
                     await user.save();
-                    
+
                     // Add achievement for registering for the event
                     await addUserAchievement(id, {
                         title: `Registered for ${event.eventName}`,
@@ -491,10 +492,10 @@ const HandleGetParticipantsByEvent = async (req, res) => {
         const participants = await Participants.find({ eventid });
 
         if (participants.length === 0) {
-            return res.status(404).json({ 
-                message: "No participants found for this event", 
-                count: 0, 
-                participants: [] 
+            return res.status(404).json({
+                message: "No participants found for this event",
+                count: 0,
+                participants: []
             });
         }
 
@@ -506,9 +507,9 @@ const HandleGetParticipantsByEvent = async (req, res) => {
             participants
         });
     } catch (error) {
-        res.status(500).json({ 
-            message: "Error retrieving participants", 
-            error: error.message 
+        res.status(500).json({
+            message: "Error retrieving participants",
+            error: error.message
         });
     }
 }
@@ -563,6 +564,52 @@ const HandleGetParticipantsByUserId = async (req, res) => {
 };
 
 
+const HandleSearchParticipants = async (req, res) => {
+    try {
+        const { query } = req.query;
+        const { eventid } = req.body;
+        
+        if (!query?.trim()) {
+            return res.status(400).json({ success: false, message: "Search query is required." });
+        }
+
+        // Search users by `userid` using case-insensitive regex
+        const members = await User.find(
+            { userid: { $regex: `^${query}`, $options: "i" } }
+        ).limit(10);
+
+        // Prepare the array to store results
+        const NewMembers = [];
+
+        // Check if each user is already participating in the event
+        await Promise.all(
+            members.map(async (member) => {
+                const alreadyParticipated = await Participants.findOne({
+                    eventid: eventid,
+                    "participant_id.id": member._id
+                });
+
+                // Push each user's data into the array
+                NewMembers.push({
+                    name: member.name,
+                    userid: member.userid,
+                    ProfileImage: member.profileImage,
+                    IsUserExsit: !!alreadyParticipated, // Converts to true/false
+                    _id: member._id
+                });
+            })
+        );
+
+        return res.status(200).json({ success: true, members: NewMembers });
+    } catch (error) {
+        console.error("Search error:", error.message);
+        return res.status(500).json({ success: false, message: "Server error" });
+    }
+};
+
+
+
+
 module.exports = {
     HandleAddParticipants,
     HandleGetAllParticipants,
@@ -574,5 +621,6 @@ module.exports = {
     HandleCheckTeam,
     HandleGetParticipantsByEvent,
     HandleGetParticipantsByUserId,
-    HandleUpdateParticipantsTeam
+    HandleUpdateParticipantsTeam,
+    HandleSearchParticipants
 }
