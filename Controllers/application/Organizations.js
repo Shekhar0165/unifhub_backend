@@ -76,11 +76,12 @@ const HandleUpdateOrganization = async (req, res) => {
         
         // Parse the orgData from FormData
         let updates = {};
-        if (req.body.orgData) {
-            updates = JSON.parse(req.body.orgData);
+        if (req.body.organizationData) {
+            updates = JSON.parse(req.body.organizationData);
         } else {
             updates = { ...req.body };
         }
+        console.log(updates)
         
         // Add file paths from S3 if files were uploaded
         if (req.files) {
