@@ -12,6 +12,6 @@ router.get('/:userId/github', userActivityController.getGitHubActivity);
 
 
 // Admin route to recalculate all users' activity data
-router.post('/recalculate/all', auth, userActivityController.recalculateAllUserActivity);
+router.post('/recalculate/all', userActivityController.recalculateAllUserActivity);
 
 module.exports = router;

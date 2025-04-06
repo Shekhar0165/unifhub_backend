@@ -9,21 +9,46 @@ const githubIntegration = require('../../utils/githubIntegration');
 
 // Scoring constants - can be adjusted as needed
 const SCORE_CONSTANTS = {
-    EVENT_PARTICIPATION_BASE: 10,
-    EVENT_ORGANIZATION_HEAD: 50,
-    EVENT_ORGANIZATION_VICE_HEAD: 30,
-    EVENT_ORGANIZATION_MEMBER: 20,
-    ORGANIZATION_MEMBERSHIP: 30,
+    EVENT_PARTICIPATION_BASE: 5,
+    EVENT_WIN_1: 25,
+    EVENT_WIN_2: 15,
+    EVENT_WIN_3: 15,
+    EVENT_TOP_20: 8,
+    EVENT_ORGANIZATION_HEAD: 25,
+    EVENT_ORGANIZATION_VICE_HEAD: 15,
+    EVENT_ORGANIZATION_MEMBER: 10,
+    ORGANIZATION_MEMBERSHIP: 15,
     PARTICIPANT_MULTIPLIER: 0.05, // 5 points per 100 participants
     GITHUB_CONTRIBUTION_MULTIPLIER: 0.5, // GitHub contributions are weighted at 50% of platform activities
+};
+
+// Cache duration (in milliseconds)
+const CACHE_DURATION = {
+    ACTIVITY: 24 * 60 * 60 * 1000, // 24 hours for user activity
+    GITHUB: 24 * 60 * 60 * 1000,   // 24 hours for GitHub data
+};
+
+/**
+ * Check if user activity needs to be updated
+ * @param {Object} userActivity - User activity record
+ * @returns {Boolean} True if activity needs update
+ */
+const needsActivityUpdate = (userActivity) => {
+    if (!userActivity) return true;
+    if (!userActivity.lastUpdated) return true;
+    
+    const now = new Date();
+    const timeSinceUpdate = now - userActivity.lastUpdated;
+    return timeSinceUpdate > CACHE_DURATION.ACTIVITY;
 };
 
 /**
  * Fetch and update GitHub activity for a user
  * @param {String} userId - User ID
+ * @param {Boolean} forceUpdate - Force update regardless of cache
  * @returns {Promise<Object>} Updated GitHub activity data
  */
-const updateGitHubActivity = async (userId) => {
+const updateGitHubActivity = async (userId, forceUpdate = false) => {
     try {
         // Find user and get GitHub username
         const user = await User.findById(userId);
@@ -37,6 +62,7 @@ const updateGitHubActivity = async (userId) => {
             console.log(`No GitHub username found for user ${userId}`);
             return null;
         }
+        
         // Extract just the username if a full URL was provided
         const usernameMatch = githubUsername.match(/github\.com\/([^\/]+)/);
         const username = usernameMatch ? usernameMatch[1] : githubUsername;
@@ -65,6 +91,16 @@ const updateGitHubActivity = async (userId) => {
             };
         }
         
+        // Check if GitHub data needs to be refreshed
+        const needsGitHubUpdate = forceUpdate || 
+            !userActivity.githubActivity.lastFetched || 
+            (new Date() - userActivity.githubActivity.lastFetched > CACHE_DURATION.GITHUB);
+        
+        if (!needsGitHubUpdate) {
+            console.log(`Using cached GitHub data for user ${userId}, last updated: ${userActivity.githubActivity.lastFetched}`);
+            return userActivity.githubActivity;
+        }
+        
         // Set the username in case it changed
         userActivity.githubActivity.username = username;
         
@@ -90,6 +126,9 @@ const updateGitHubActivity = async (userId) => {
                 recentContributions
             });
             
+            // Calculate previous GitHub score to adjust total score
+            const previousGitHubScore = userActivity.githubActivity.score || 0;
+            
             // Update GitHub activity data
             userActivity.githubActivity.lastFetched = new Date();
             userActivity.githubActivity.totalContributions = contributionCalendar.totalContributions;
@@ -97,8 +136,8 @@ const updateGitHubActivity = async (userId) => {
             userActivity.githubActivity.repositories = scoreData.repositories;
             userActivity.githubActivity.contributionCalendar = contributionCalendar;
             
-            // Add to total score
-            userActivity.totalScore += userActivity.githubActivity.score;
+            // Adjust total score: remove previous GitHub score and add new one
+            userActivity.totalScore = (userActivity.totalScore - previousGitHubScore) + userActivity.githubActivity.score;
             
             // Save the updated activity record
             await userActivity.save();
@@ -118,8 +157,9 @@ const updateGitHubActivity = async (userId) => {
 /**
  * Calculate user activity scores
  * @param {String} userId - User ID
+ * @param {Boolean} forceUpdate - Force update regardless of cache
  */
-const calculateUserScore = async (userId) => {
+const calculateUserScore = async (userId, forceUpdate = false) => {
     try {
         const objectId = new mongoose.Types.ObjectId(userId);
         
@@ -127,14 +167,21 @@ const calculateUserScore = async (userId) => {
         let userActivity = await UserActivity.findOne({ userId: objectId });
         if (!userActivity) {
             userActivity = new UserActivity({ userId: objectId });
+            forceUpdate = true; // Force update for new records
         }
 
+        // Check if update is needed
+        if (!forceUpdate && !needsActivityUpdate(userActivity)) {
+            console.log(`Using cached activity data for user ${userId}, last updated: ${userActivity.lastUpdated}`);
+            return userActivity;
+        }
+        
         // Reset scores for recalculation
         userActivity.totalScore = 0;
         
         // 1. Calculate event participation scores
         const participations = await Participants.find({
-            'participant_id.userid': userId
+            'participant_id.id': userId
         });
 
         userActivity.eventParticipation = [];
@@ -144,15 +191,33 @@ const calculateUserScore = async (userId) => {
             if (event) {
                 // Calculate score based on event size
                 const participantCount = event.totalparticipants || 0;
-                const score = SCORE_CONSTANTS.EVENT_PARTICIPATION_BASE + 
+                let score = SCORE_CONSTANTS.EVENT_PARTICIPATION_BASE + 
                     (participantCount * SCORE_CONSTANTS.PARTICIPANT_MULTIPLIER);
+                
+                // Check if the user won a position in this event
+                let position = null;
+                if (participation.position) {
+                    position = participation.position;
+                    
+                    // Add position-based scores
+                    if (position === 1) {
+                        score += SCORE_CONSTANTS.EVENT_WIN_1;
+                    } else if (position === 2) {
+                        score += SCORE_CONSTANTS.EVENT_WIN_2;
+                    } else if (position === 3) {
+                        score += SCORE_CONSTANTS.EVENT_WIN_3;
+                    } else if (position <= 20) {
+                        score += SCORE_CONSTANTS.EVENT_TOP_20;
+                    }
+                }
                 
                 userActivity.eventParticipation.push({
                     eventId: event._id,
                     eventName: event.eventName,
                     date: event.eventDate,
                     score: Math.round(score),
-                    participantCount
+                    participantCount,
+                    position: position || 'participant'
                 });
                 
                 userActivity.totalScore += Math.round(score);
@@ -231,6 +296,7 @@ const calculateUserScore = async (userId) => {
                 organizationId: org._id,
                 organizationName: org.name,
                 role,
+                teamName,
                 joinDate: new Date(), // Need actual join date if available
                 score
             });
@@ -239,7 +305,7 @@ const calculateUserScore = async (userId) => {
         }
 
         // 4. Fetch and update GitHub activity
-        const githubActivity = await updateGitHubActivity(userId);
+        const githubActivity = await updateGitHubActivity(userId, forceUpdate);
         if (githubActivity) {
             // GitHub score is already added to totalScore in updateGitHubActivity function
             console.log(`GitHub activity updated for user ${userId}, score: ${githubActivity.score}`);
@@ -251,8 +317,11 @@ const calculateUserScore = async (userId) => {
         // 6. Calculate streak and contribution data
         updateStreakAndContributions(userActivity);
         
+        // Update last updated timestamp
+        userActivity.lastUpdated = new Date();
+        
         // Save the updated activity record
-        // await userActivity.save();
+        await userActivity.save();
         
         return userActivity;
     } catch (error) {
@@ -271,16 +340,47 @@ const calculateTimeBasedScores = (userActivity) => {
         ...userActivity.eventOrganization
     ];
     
+    // Daily scores
+    const dailyScores = {};
     // Weekly scores
     const weeklyScores = {};
     // Monthly scores
     const monthlyScores = {};
     
+    // Get current date for determining recent periods
+    const now = new Date();
+    const currentDayStart = new Date(now);
+    currentDayStart.setHours(0, 0, 0, 0);
+    
+    // Calculate start of current week (Sunday)
+    const currentWeekStart = new Date(now);
+    currentWeekStart.setDate(now.getDate() - now.getDay());
+    currentWeekStart.setHours(0, 0, 0, 0);
+    
+    // Calculate start of current month
+    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    
+    // Previous month start
+    const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+    
+    // Initialize totals for current periods
+    let todayTotal = 0;
+    let currentWeekTotal = 0;
+    let currentMonthTotal = 0;
+    let lastMonthTotal = 0;
+    
     for (const activity of activities) {
         if (!activity.date) continue;
         
-        // Get the start of the week (Sunday)
+        // Convert string date to Date object if necessary
         const activityDate = new Date(activity.date);
+        
+        // Get the start of the activity day
+        const dayStart = new Date(activityDate);
+        dayStart.setHours(0, 0, 0, 0);
+        
+        // Get the start of the week (Sunday)
         const weekStart = new Date(activityDate);
         weekStart.setDate(activityDate.getDate() - activityDate.getDay());
         weekStart.setHours(0, 0, 0, 0);
@@ -288,22 +388,54 @@ const calculateTimeBasedScores = (userActivity) => {
         // Get the start of the month
         const monthStart = new Date(activityDate.getFullYear(), activityDate.getMonth(), 1);
         
+        // Add to daily scores
+        const dayKey = dayStart.toISOString().split('T')[0];
+        if (!dailyScores[dayKey]) {
+            dailyScores[dayKey] = 0;
+        }
+        dailyScores[dayKey] += activity.score;
+        
+        // Check if activity is from today
+        if (dayStart.getTime() === currentDayStart.getTime()) {
+            todayTotal += activity.score;
+        }
+        
         // Add to weekly scores
-        const weekKey = weekStart.toISOString();
+        const weekKey = weekStart.toISOString().split('T')[0];
         if (!weeklyScores[weekKey]) {
             weeklyScores[weekKey] = 0;
         }
         weeklyScores[weekKey] += activity.score;
         
+        // Check if activity is from current week
+        if (weekStart.getTime() === currentWeekStart.getTime()) {
+            currentWeekTotal += activity.score;
+        }
+        
         // Add to monthly scores
-        const monthKey = monthStart.toISOString();
+        const monthKey = monthStart.toISOString().split('T')[0];
         if (!monthlyScores[monthKey]) {
             monthlyScores[monthKey] = 0;
         }
         monthlyScores[monthKey] += activity.score;
+        
+        // Check if activity is from current month
+        if (monthStart.getTime() === currentMonthStart.getTime()) {
+            currentMonthTotal += activity.score;
+        }
+        
+        // Check if activity is from last month
+        if (activityDate >= lastMonthStart && activityDate <= lastMonthEnd) {
+            lastMonthTotal += activity.score;
+        }
     }
     
     // Convert to arrays for storage
+    userActivity.dailyScores = Object.entries(dailyScores).map(([day, score]) => ({
+        day: new Date(day),
+        score
+    }));
+    
     userActivity.weeklyScores = Object.entries(weeklyScores).map(([week, score]) => ({
         week: new Date(week),
         score
@@ -313,6 +445,14 @@ const calculateTimeBasedScores = (userActivity) => {
         month: new Date(month),
         score
     }));
+    
+    // Add current period totals
+    userActivity.currentScores = {
+        today: todayTotal,
+        currentWeek: currentWeekTotal,
+        currentMonth: currentMonthTotal,
+        lastMonth: lastMonthTotal
+    };
 };
 
 /**
@@ -438,14 +578,25 @@ const getWeekNumber = (date) => {
 exports.getUserActivity = async (req, res) => {
     try {
         const { userId } = req.params;
+        const { forceUpdate } = req.query; // Optional query param to force update
         
         if (!userId) {
             return res.status(400).json({ message: 'User ID is required' });
         }
         
-        // Calculate latest activity scores
-        const userActivity = await calculateUserScore(userId);
-        console.log("funcstion over")
+        // First, try to get cached activity data
+        let userActivity = await UserActivity.findOne({ userId });
+        
+        // Check if we need to calculate or update the activity
+        const shouldUpdate = forceUpdate === 'true' || !userActivity || needsActivityUpdate(userActivity);
+        
+        if (shouldUpdate) {
+            // Calculate latest activity scores
+            userActivity = await calculateUserScore(userId, forceUpdate === 'true');
+            console.log("Activity calculation completed");
+        } else {
+            console.log("Using cached activity data");
+        }
         
         // Get user details
         const user = await User.findById(userId);
@@ -453,11 +604,11 @@ exports.getUserActivity = async (req, res) => {
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-
-        await userActivity.populate();
         
         return res.status(200).json({
             message: 'User activity data retrieved successfully',
+            freshData: shouldUpdate,
+            lastUpdated: userActivity.lastUpdated,
             data: {
                 user: {
                     id: user._id,
@@ -481,6 +632,33 @@ exports.getUserActivity = async (req, res) => {
 };
 
 /**
+ * Update user activity data after profile change
+ * @param {Object} req - Request object
+ * @param {Object} res - Response object
+ */
+exports.updateUserActivity = async (req, res) => {
+    try {
+        const { userId } = req.params;
+        
+        if (!userId) {
+            return res.status(400).json({ message: 'User ID is required' });
+        }
+        
+        // Force recalculation of user activity
+        const userActivity = await calculateUserScore(userId, true);
+        
+        return res.status(200).json({
+            message: 'User activity data updated successfully',
+            lastUpdated: userActivity.lastUpdated,
+            totalScore: userActivity.totalScore
+        });
+    } catch (error) {
+        console.error('Error updating user activity:', error);
+        return res.status(500).json({ message: 'Internal server error', error: error.message });
+    }
+};
+
+/**
  * Recalculate all users' activity data
  * @param {Object} req - Request object
  * @param {Object} res - Response object
@@ -489,19 +667,28 @@ exports.recalculateAllUserActivity = async (req, res) => {
     try {
         const users = await User.find({});
         const updatedUsers = [];
+        const failedUsers = [];
         
         for (const user of users) {
             try {
-                await calculateUserScore(user._id);
+                await calculateUserScore(user._id, true);
                 updatedUsers.push(user._id);
             } catch (error) {
                 console.error(`Error calculating score for user ${user._id}:`, error);
+                failedUsers.push({
+                    userId: user._id,
+                    error: error.message
+                });
             }
         }
         
         return res.status(200).json({
             message: 'All user activity data recalculated successfully',
-            updatedUsers
+            updatedUsers,
+            failedUsers,
+            total: users.length,
+            succeeded: updatedUsers.length,
+            failed: failedUsers.length
         });
     } catch (error) {
         console.error('Error recalculating all user activity:', error);
@@ -569,7 +756,7 @@ exports.getTopUsers = async (req, res) => {
  */
 exports.updateUserActivityAfterEvent = async (userId) => {
     try {
-        await calculateUserScore(userId);
+        await calculateUserScore(userId, true);
         return true;
     } catch (error) {
         console.error('Error updating user activity after event:', error);
@@ -608,13 +795,16 @@ exports.connectGitHub = async (req, res) => {
         await user.save();
         
         // Fetch and update GitHub activity
-        const githubActivity = await updateGitHubActivity(userId);
+        const githubActivity = await updateGitHubActivity(userId, true);
         
         if (!githubActivity) {
             return res.status(404).json({ 
                 message: 'Failed to fetch GitHub activity, please verify the username' 
             });
         }
+        
+        // Update user activity with the new GitHub data
+        await calculateUserScore(userId, true);
         
         return res.status(200).json({
             message: 'GitHub account connected and activity fetched successfully',
@@ -640,6 +830,7 @@ exports.connectGitHub = async (req, res) => {
 exports.getGitHubActivity = async (req, res) => {
     try {
         const { userId } = req.params;
+        const { forceUpdate } = req.query; // Optional query param to force update
         
         if (!userId) {
             return res.status(400).json({ message: 'User ID is required' });
@@ -654,22 +845,30 @@ exports.getGitHubActivity = async (req, res) => {
             });
         }
         
-        // Check if data needs to be refreshed (older than 1 day)
-        const lastFetched = userActivity.githubActivity.lastFetched;
-        const oneDayAgo = new Date();
-        oneDayAgo.setDate(oneDayAgo.getDate() - 1);
-        
         let refreshed = false;
-        if (!lastFetched || lastFetched < oneDayAgo) {
+        
+        // Check if data needs to be refreshed
+        const lastFetched = userActivity.githubActivity.lastFetched;
+        const needsRefresh = forceUpdate === 'true' || 
+            !lastFetched || 
+            (new Date() - lastFetched > CACHE_DURATION.GITHUB);
+        
+        if (needsRefresh) {
             // Refresh GitHub data
-            const updatedActivity = await updateGitHubActivity(userId);
+            const updatedActivity = await updateGitHubActivity(userId, true);
             refreshed = true;
         }
+        
+        // Get the latest user activity record after potential update
+        const latestUserActivity = refreshed ? 
+            await UserActivity.findOne({ userId }) : 
+            userActivity;
         
         return res.status(200).json({
             message: 'GitHub activity retrieved successfully',
             refreshed,
-            data: userActivity.githubActivity
+            lastFetched: latestUserActivity.githubActivity.lastFetched,
+            data: latestUserActivity.githubActivity
         });
     } catch (error) {
         console.error('Error getting GitHub activity:', error);
@@ -680,5 +879,14 @@ exports.getGitHubActivity = async (req, res) => {
     }
 };
 
-// Export the updateGitHubActivity function for use in scheduled jobs
+// Make sure the UserActivity schema includes a lastUpdated field
+// You may need to update your schema like:
+// const userActivitySchema = new mongoose.Schema({
+//     userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
+//     lastUpdated: { type: Date, default: Date.now },
+//     // ... other fields
+// });
+
+// Export the functions for use in scheduled jobs
 exports.updateGitHubActivity = updateGitHubActivity;
+exports.calculateUserScore = calculateUserScore;

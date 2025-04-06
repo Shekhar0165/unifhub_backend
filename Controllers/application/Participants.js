@@ -344,11 +344,6 @@ const HandleDeclareResult = async (req, res) => {
             return res.status(400).json({ message: "Event has not started yet." });
         }
 
-        // Check if event is ongoing
-        if (event.status !== "ongoing") {
-            return res.status(400).json({ message: "Event is not Completed Yet" });
-        }
-
         // Validate results array
         if (!Array.isArray(results) || results.length === 0) {
             return res.status(400).json({ message: "Results must be a non-empty array" });

@@ -20,7 +20,11 @@ const UserActivitySchema = new mongoose.Schema({
         eventName: String,
         date: Date,
         score: Number,
-        participantCount: Number
+        participantCount: Number,
+        position: { // Added field to track event position
+            type: mongoose.Schema.Types.Mixed, // Can be a number or string like 'participant'
+            default: 'participant'
+        }
     }],
     eventOrganization: [{
         eventId: {
@@ -40,6 +44,7 @@ const UserActivitySchema = new mongoose.Schema({
         },
         organizationName: String,
         role: String,
+        teamName: String, // Added field to track which team they're part of
         joinDate: Date,
         score: Number
     }],
@@ -83,6 +88,11 @@ const UserActivitySchema = new mongoose.Schema({
             }]
         }
     },
+    // Daily activity scores
+    dailyScores: [{ // Added new array for daily scores
+        day: Date, // Start of the day
+        score: Number
+    }],
     // Weekly activity scores
     weeklyScores: [{
         week: Date, // Start of the week
@@ -93,6 +103,25 @@ const UserActivitySchema = new mongoose.Schema({
         month: Date, // Start of the month
         score: Number  
     }],
+    // Current period scores (today, current week, current month, last month)
+    currentScores: { // Added new object for easy access to current periods
+        today: {
+            type: Number,
+            default: 0
+        },
+        currentWeek: {
+            type: Number,
+            default: 0
+        },
+        currentMonth: {
+            type: Number,
+            default: 0
+        },
+        lastMonth: {
+            type: Number,
+            default: 0
+        }
+    },
     // Activity streak data
     streak: {
         currentStreak: {
@@ -110,7 +139,11 @@ const UserActivitySchema = new mongoose.Schema({
         type: [[Number]],
         default: Array(53).fill().map(() => Array(7).fill(0)) // 53 weeks × 7 days
     },
-    // Timestamps for creation and updates
+    // Last time the activity was updated
+    lastUpdated: { // Added explicit field for tracking when scores were last updated
+        type: Date,
+        default: Date.now
+    }
 }, { timestamps: true });
 
 module.exports = mongoose.model('UserActivity', UserActivitySchema);

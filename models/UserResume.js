@@ -17,6 +17,10 @@ const UserResumeSchema = new mongoose.Schema({
         metrics: {
             type: Object,
             default: {}
+        },
+        isPosted: {
+            type: Boolean,
+            default: false
         }
     }],
     UserId: { 
