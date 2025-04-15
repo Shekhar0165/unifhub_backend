@@ -84,7 +84,8 @@ const HandleCheckEventsCompleted = async (userid) => {
                     title: "Joined UnifHub",
                     Date: user.createdAt || new Date(), // Ensure we always have a valid date
                     description: `${user.name} joined UnifHub and started their journey.`,
-                    metrics: { achievementType: 'registration' }
+                    metrics: { achievementType: 'registration' },
+                    isPosted: false // Mark as posted
                 });
             }
         }
@@ -231,7 +232,8 @@ const generateUserResume = async (userid) => {
                     title: "Joined UnifHub",
                     Date: user.createdAt || new Date(),
                     description: `${user.name} joined UnifHub and started their journey.`,
-                    metrics: { achievementType: 'registration' }
+                    metrics: { achievementType: 'registration' },
+                    isPosted: false // Mark as posted
                 });
             }
             console.log(userResume);
@@ -346,7 +348,8 @@ const addUserAchievement = async (userId, achievement) => {
             title: achievement.title,
             Date: achievementDate, // Always use the validated date
             description: achievement.description,
-            metrics: achievement.metrics || {}
+            metrics: achievement.metrics || {},
+            isPosted: false // Mark as posted
         });
         
         // Save changes

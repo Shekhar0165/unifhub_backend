@@ -18,13 +18,39 @@ const PostSchema = new mongoose.Schema({
             type: String,
             required: true
         },
-        like:{
+        likes: [{
             type: mongoose.Schema.Types.ObjectId,
-            ref: "Like"
-        },
-        comment:{
-            type: mongoose.Schema.Types.ObjectId,
-            ref: "Comment"
+            ref: "User"
+        }],
+        comments: [{
+            userId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User',
+                required: true
+            },
+            comment: {
+                type: String,
+                required: true
+            },
+            createdAt: {
+                type: Date,
+                default: Date.now
+            }
+        }],
+        impressions: [{
+            userId: {
+                type: mongoose.Schema.Types.ObjectId,
+                ref: 'User'
+            },
+            viewedAt: {
+                type: Date,
+                default: Date.now
+            }
+        }],
+        type: {
+            type: String,
+            enum: ['post', 'event', 'organization', 'other'],
+            default: 'post'
         },
         achievementid:{
             type: mongoose.Schema.Types.ObjectId,
@@ -42,6 +68,6 @@ const PostSchema = new mongoose.Schema({
 
 }, { timestamps: true });
 
-const UserResume = mongoose.model("Post",PostSchema);
+const Post = mongoose.model("Post", PostSchema);
 
-module.exports = UserResume;
+module.exports = Post;

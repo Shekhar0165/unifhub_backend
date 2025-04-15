@@ -60,7 +60,8 @@ app.use('/org-reviews', require('./routes/api/OrganizationReview'))
 app.use('/event-reviews', require('./routes/api/EventReview'))
 app.use('/org-activity', require('./routes/api/OrganizationActivity'))
 app.use(('/follower'),require('./routes/api/follower'))
-app.use('/user-post', require('./routes/api/Post'))
+app.use('/post', require('./routes/api/Post'))
+app.use('/feed', require('./routes/api/Feed'))
 
 
 app.get("/", (req, res) => {

@@ -1,14 +1,40 @@
 const User = require('../../models/User')
-// const Post = require('../../models/Post')
-// const Comment = require('../../models/Comment')
-// const Like = require('../../models/Like')
 const Post = require('../../models/Post')
-const UserResume = require('../../models/UserResume')
+const UserResume = require('../../models/UserResume');
+const mongoose  = require('mongoose');
+
+// Get all posts for a user
 
 
+const GetUserPosts = async (req, res) => {
+    try {
+        const userId = req.params.id;
+
+        // Check if user exists
+        const user = await User.findById(userId);
+        if (!user) {
+            return res.status(404).json({ message: 'User not found' });
+        }
+
+        // Get user's posts with populated user data
+        const posts = await Post.findOne({ userid: userId })
+            .populate('userid', 'name email profileImage');
+
+        if (!posts) {
+            return res.status(200).json({ message: 'No posts found for this user', posts: [] });
+        }
+
+        return res.status(200).json({ posts });
+    } catch (err) {
+        console.error('Error getting user posts:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// Get pending posts from user resume
 const HandlePandingPost = async (req, res) => {
     try {
-        const id = req.params.id;
+        const id = req.user.id;
         const user = await User.findById(id)
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
@@ -17,7 +43,7 @@ const HandlePandingPost = async (req, res) => {
         if (!userResume) {
             return res.status(404).json({ message: 'User resume not found' });
         }
-        const pendingPosts = userResume.Journey.filter(post => !post.isPosted); 
+        const pendingPosts = userResume.Journey.filter(post => !post.isPosted);
         if (pendingPosts.length === 0) {
             return res.status(404).json({ message: 'No pending posts found' });
         }
@@ -30,16 +56,24 @@ const HandlePandingPost = async (req, res) => {
     }
 }
 
-
+// Add a new post
 const HandleAddAchievementPost = async (req, res) => {
     try {
-        const userId = req.params.id;
-        const { title, description, content, image_path, isAchivementPosted, achievementid } = req.body;
+        console.log("started")
+        const userId = req.user.id;
+        const { title, description, content, isAchivementPosted, achievementid } = req.body;
 
-        // Validate required fields
-        if (!title || !description || !content || !image_path || isAchivementPosted === undefined) {
+        if (!title || !description || !content) {
             return res.status(400).json({ message: 'All required fields must be provided' });
         }
+
+        
+        let image_path = "";
+        if (req.file && req.file.s3) {
+            // Use S3 URL instead of local path
+            image_path = req.file.s3.url;
+        }
+
 
         // Check if user exists
         const user = await User.findById(userId);
@@ -49,30 +83,39 @@ const HandleAddAchievementPost = async (req, res) => {
 
         // If it's an achievement post, validate achievementid
         if (isAchivementPosted) {
-            if (!achievementid) {
-                return res.status(400).json({ message: 'Achievement ID is required for achievement posts' });
+            // Need to import mongoose at the top of the file
+            console.log("inside")
+            
+            if (!achievementid || !mongoose.Types.ObjectId.isValid(achievementid)) {
+                return res.status(400).json({ message: 'Valid Achievement ID is required for achievement posts' });
             }
-
-            // Validate achievement exists in user's resume
+            
+            console.log("inside2",achievementid)
             const userResume = await UserResume.findOne({
-                _id: userId,
+                UserId: userId,
                 'Journey._id': achievementid
-            }, {
-                'Journey.$': 1
             });
-
-            if (!userResume || !userResume.Journey.length) {
+            console.log("inside3",achievementid)
+            
+            console.log(userResume);
+            // Find the specific achievement in the Journey array
+            const achievement = userResume?.Journey?.find(item => item._id.toString() === achievementid);
+            console.log(achievement?.isPosted);
+        
+            if (!userResume) {
                 return res.status(404).json({ message: 'Achievement not found in user resume' });
             }
         }
 
-        // Create new post object (conditionally add achievementid)
+        // Create new post object
         const newPost = {
             title,
             description,
             content,
             image_path,
-            isAchivementPosted
+            likes: [],
+            comments: [],
+            isAchivementPosted: isAchivementPosted || false // Consider fixing spelling to isAchievementPosted
         };
 
         if (isAchivementPosted) {
@@ -91,24 +134,32 @@ const HandleAddAchievementPost = async (req, res) => {
             userPost.post.push(newPost);
         }
 
+        if(isAchivementPosted){ 
+            await UserResume.findOneAndUpdate(
+                { UserId: userId, 'Journey._id': achievementid },
+                { $set: { 'Journey.$[elem].isPosted': true } },
+                { 
+                    arrayFilters: [{ 'elem._id': achievementid }],
+                    new: true
+                }
+            );
+        }
         await userPost.save();
 
         return res.status(201).json({ message: 'Post added successfully', post: newPost });
 
     } catch (err) {
         console.error('Error adding post:', err);
-        return res.status(500).json({ message: 'Internal server error' });
+        return res.status(500).json({ message: 'Internal server error', error: err.message });
     }
 };
 
-const HandleLikePost = async (req, res) => {
-    try {
-        const { postId } = req.params; // ID of the post inside Post.post[]
-        const { userId } = req.body;
 
-        if (!userId || !postId) {
-            return res.status(400).json({ message: 'User ID and Post ID are required' });
-        }
+const HandleCheckUserLikeOrNot = async (req, res) => {
+    try {
+        console.log("inside")
+        const { postId } = req.params;
+        const userId = req.user.id; // Assuming auth middleware sets user
 
         // Find the post document that contains the post with postId
         const postDoc = await Post.findOne({ 'post._id': postId });
@@ -119,31 +170,142 @@ const HandleLikePost = async (req, res) => {
         // Find the specific post
         const post = postDoc.post.id(postId);
 
-        if (post.likes.includes(userId)) {
-            return res.status(400).json({ message: 'You have already liked this post' });
+        // Check if user already liked the post
+        const alreadyLiked = post.likes.includes(userId);
+
+        return res.status(200).json({
+            message: alreadyLiked ? 'User has liked the post' : 'User has not liked the post',
+            liked: alreadyLiked
+        });
+    }
+    catch (err) {   
+        console.error('Error checking user like:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+}
+
+// Update an existing post
+const HandleUpdatePost = async (req, res) => {
+    try {
+        const { postId } = req.params;
+        const { title, description, content, image_path } = req.body;
+        const userId = req.user.id; // Assuming auth middleware sets user
+
+        // Validate required fields
+        if (!title && !description && !content && !image_path) {
+            return res.status(400).json({ message: 'At least one field must be provided for update' });
         }
 
-        post.likes.push(userId);
+        // Find the post document
+        const postDoc = await Post.findOne({
+            'post._id': postId,
+            'userid': userId // Ensure user owns the post
+        });
+
+        if (!postDoc) {
+            return res.status(404).json({ message: 'Post not found or you do not have permission to update it' });
+        }
+
+        // Find the specific post
+        const post = postDoc.post.id(postId);
+
+        // Update fields if provided
+        if (title) post.title = title;
+        if (description) post.description = description;
+        if (content) post.content = content;
+        if (image_path) post.image_path = image_path;
+
         await postDoc.save();
 
-        return res.status(200).json({ message: 'Post liked successfully', likes: post.likes });
+        return res.status(200).json({ message: 'Post updated successfully', post });
+    } catch (err) {
+        console.error('Error updating post:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// Delete a post
+const HandleDeletePost = async (req, res) => {
+    try {
+        const { postId } = req.params;
+        const userId = req.user.id; // Assuming auth middleware sets user
+
+        // Find the post document
+        const postDoc = await Post.findOne({
+            'post._id': postId,
+            'userid': userId // Ensure user owns the post
+        });
+
+        if (!postDoc) {
+            return res.status(404).json({ message: 'Post not found or you do not have permission to delete it' });
+        }
+
+        // Remove the post from the array
+        postDoc.post.pull({ _id: postId });
+        await postDoc.save();
+
+        return res.status(200).json({ message: 'Post deleted successfully' });
+    } catch (err) {
+        console.error('Error deleting post:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// Like or unlike a post
+const HandleLikePost = async (req, res) => {
+    try {
+        const { postId } = req.params;
+        const userId = req.user.id; // Assuming auth middleware sets user
+
+        // Find the post document that contains the post with postId
+        const postDoc = await Post.findOne({ 'post._id': postId });
+        if (!postDoc) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+
+        // Find the specific post
+        const post = postDoc.post.id(postId);
+
+        // Check if user already liked the post
+        const alreadyLiked = post.likes.includes(userId);
+
+        if (alreadyLiked) {
+            // Remove like (unlike)
+            post.likes = post.likes.filter(id => id.toString() !== userId);
+        } else {
+            // Add like
+            post.likes.push(userId);
+        }
+
+        await postDoc.save();
+
+        // Get user info for each like
+        const likedBy = await User.find(
+            { _id: { $in: post.likes } },
+            'name profileImage'
+        );
+
+        return res.status(200).json({
+            message: alreadyLiked ? 'Post unliked successfully' : 'Post liked successfully',
+            likeCount: post.likes.length,
+            liked: !alreadyLiked,
+            likedBy
+        });
     } catch (err) {
         console.error('Error liking post:', err);
         return res.status(500).json({ message: 'Internal server error' });
     }
 };
 
-
+// Comment on a post
 const HandleCommentPost = async (req, res) => {
     try {
         const { postId } = req.params;
-        const { userId, comment } = req.body;
+        const { comment } = req.body;
+        console.log(comment)
+        const userId = req.user.id; // Assuming auth middleware sets user
 
-        if (!userId || !comment || !postId) {
-            return res.status(400).json({ message: 'User ID, comment, and Post ID are required' });
-        }
-
-        if (comment.trim().length === 0) {
+        if (!comment || comment.trim().length === 0) {
             return res.status(400).json({ message: 'Comment cannot be empty' });
         }
 
@@ -151,6 +313,7 @@ const HandleCommentPost = async (req, res) => {
         if (!postDoc) {
             return res.status(404).json({ message: 'Post not found' });
         }
+        console.log(postDoc)
 
         const post = postDoc.post.id(postId);
 
@@ -163,16 +326,106 @@ const HandleCommentPost = async (req, res) => {
         post.comments.push(newComment);
         await postDoc.save();
 
-        return res.status(200).json({ message: 'Comment added successfully', comments: post.comments });
+        // Get user info for the comment
+        const commentUser = await User.findById(userId, 'name profileImage');
+
+        // Format the response with user info
+        const commentWithUser = {
+            ...newComment,
+            user: commentUser
+        };
+
+        return res.status(200).json({
+            message: 'Comment added successfully',
+            comment: commentWithUser,
+            commentCount: post.comments.length
+        });
     } catch (err) {
         console.error('Error adding comment:', err);
         return res.status(500).json({ message: 'Internal server error' });
     }
 };
 
+// Get comments for a post with user info
+const GetPostComments = async (req, res) => {
+    try {
+        const { postId } = req.params;
 
+        const postDoc = await Post.findOne({ 'post._id': postId });
+        if (!postDoc) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+
+        const post = postDoc.post.id(postId);
+
+        // Get all user info for comments in one query
+        const userIds = post.comments.map(comment => comment.userId);
+        const users = await User.find(
+            { _id: { $in: userIds } },
+            'name profileImage'
+        );
+
+        // Create a map for quick lookup
+        const userMap = {};
+        users.forEach(user => {
+            userMap[user._id.toString()] = user;
+        });
+
+        // Add user info to each comment
+        const commentsWithUserInfo = post.comments.map(comment => {
+            return {
+                ...comment.toObject(),
+                user: userMap[comment.userId.toString()]
+            };
+        });
+
+        return res.status(200).json({
+            comments: commentsWithUserInfo,
+            commentCount: post.comments.length
+        });
+    } catch (err) {
+        console.error('Error getting post comments:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
+
+// Get users who liked a post
+const GetPostLikes = async (req, res) => {
+    try {
+        const { postId } = req.params;
+
+        const postDoc = await Post.findOne({ 'post._id': postId });
+        if (!postDoc) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+
+        const post = postDoc.post.id(postId);
+
+        // Get user info for each like
+        const likedBy = await User.find(
+            { _id: { $in: post.likes } },
+            'name profileImage'
+        );
+
+        return res.status(200).json({
+            likes: likedBy,
+            likeCount: post.likes.length
+        });
+    } catch (err) {
+        console.error('Error getting post likes:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+};
 
 module.exports = {
     HandlePandingPost,
-    HandleAddAchievementPost
+    HandleAddAchievementPost,
+    HandleUpdatePost,
+    HandleDeletePost,
+    HandleLikePost,
+    HandleCommentPost,
+    GetUserPosts,
+    GetPostComments,
+    GetPostLikes,
+    HandleCheckUserLikeOrNot
 }
