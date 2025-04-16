@@ -15,7 +15,7 @@ const FollowSchema = new mongoose.Schema({
         },
         bio: {
             type: String,
-            required: true,
+            // required: true,
         },
         name:{
             type:String,

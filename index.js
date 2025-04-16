@@ -62,6 +62,7 @@ app.use('/org-activity', require('./routes/api/OrganizationActivity'))
 app.use(('/follower'),require('./routes/api/follower'))
 app.use('/post', require('./routes/api/Post'))
 app.use('/feed', require('./routes/api/Feed'))
+app.use('/follow-suggestion',require('./routes/api/FollowerSuggestion'))
 
 
 app.get("/", (req, res) => {

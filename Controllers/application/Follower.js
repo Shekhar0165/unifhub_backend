@@ -30,8 +30,8 @@ const HandleAddFollowing = async (followerid, userid) => {
         // ✅ Create new following entry
         const FollowingEntry = {
             followingid: userid,
-            image_path: userExists.profileImage,
-            bio: userExists.bio,
+            image_path: userExists.profileImage || "",
+            bio: userExists.bio || "",
             name: userExists.name,
             userid: userExists.userid
         };
