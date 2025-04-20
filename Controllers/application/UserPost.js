@@ -1,11 +1,24 @@
 const User = require('../../models/User')
 const Post = require('../../models/Post')
 const UserResume = require('../../models/UserResume');
-const mongoose  = require('mongoose');
+const mongoose = require('mongoose');
+const S3UploadHandler = require('../../middleware/s3Upload');
+
+// Initialize S3 upload handler for post files
+const s3Upload = new S3UploadHandler('posts');
+
+// Helper function to extract S3 key from a URL
+const extractS3KeyFromUrl = (url) => {
+  if (!url) return null;
+  
+  const urlParts = url.split('.com/');
+  if (urlParts.length > 1) {
+    return urlParts[1];
+  }
+  return null;
+};
 
 // Get all posts for a user
-
-
 const GetUserPosts = async (req, res) => {
     try {
         const userId = req.params.id;
@@ -61,19 +74,17 @@ const HandleAddAchievementPost = async (req, res) => {
     try {
         console.log("started")
         const userId = req.user.id;
-        const { title, description, content, isAchivementPosted, achievementid } = req.body;
+        const { title, description, content, isAchievementPosted, achievementid } = req.body;
 
         if (!title || !description || !content) {
             return res.status(400).json({ message: 'All required fields must be provided' });
         }
 
-        
         let image_path = "";
         if (req.file && req.file.s3) {
             // Use S3 URL instead of local path
             image_path = req.file.s3.url;
         }
-
 
         // Check if user exists
         const user = await User.findById(userId);
@@ -82,25 +93,19 @@ const HandleAddAchievementPost = async (req, res) => {
         }
 
         // If it's an achievement post, validate achievementid
-        if (isAchivementPosted) {
+        if (isAchievementPosted === true) {
             // Need to import mongoose at the top of the file
-            console.log("inside")
-            
             if (!achievementid || !mongoose.Types.ObjectId.isValid(achievementid)) {
                 return res.status(400).json({ message: 'Valid Achievement ID is required for achievement posts' });
             }
             
-            console.log("inside2",achievementid)
+            console.log("inside2", achievementid)
             const userResume = await UserResume.findOne({
                 UserId: userId,
                 'Journey._id': achievementid
             });
-            console.log("inside3",achievementid)
-            
-            console.log(userResume);
             // Find the specific achievement in the Journey array
             const achievement = userResume?.Journey?.find(item => item._id.toString() === achievementid);
-            console.log(achievement?.isPosted);
         
             if (!userResume) {
                 return res.status(404).json({ message: 'Achievement not found in user resume' });
@@ -115,10 +120,10 @@ const HandleAddAchievementPost = async (req, res) => {
             image_path,
             likes: [],
             comments: [],
-            isAchivementPosted: isAchivementPosted || false // Consider fixing spelling to isAchievementPosted
+            isAchievementPosted: isAchievementPosted || false // Fixed spelling
         };
 
-        if (isAchivementPosted) {
+        if (isAchievementPosted === true) {
             newPost.achievementid = achievementid;
         }
 
@@ -131,10 +136,11 @@ const HandleAddAchievementPost = async (req, res) => {
                 post: [newPost]
             });
         } else {
-            userPost.post.push(newPost);
+            userPost.post.unshift(newPost);
         }
 
-        if(isAchivementPosted){ 
+        // Update achievement status only if it's an achievement post
+        if (isAchievementPosted === true) { 
             await UserResume.findOneAndUpdate(
                 { UserId: userId, 'Journey._id': achievementid },
                 { $set: { 'Journey.$[elem].isPosted': true } },
@@ -144,6 +150,7 @@ const HandleAddAchievementPost = async (req, res) => {
                 }
             );
         }
+        
         await userPost.save();
 
         return res.status(201).json({ message: 'Post added successfully', post: newPost });
@@ -153,7 +160,6 @@ const HandleAddAchievementPost = async (req, res) => {
         return res.status(500).json({ message: 'Internal server error', error: err.message });
     }
 };
-
 
 const HandleCheckUserLikeOrNot = async (req, res) => {
     try {
@@ -188,13 +194,8 @@ const HandleCheckUserLikeOrNot = async (req, res) => {
 const HandleUpdatePost = async (req, res) => {
     try {
         const { postId } = req.params;
-        const { title, description, content, image_path } = req.body;
+        const { title, description, content } = req.body;
         const userId = req.user.id; // Assuming auth middleware sets user
-
-        // Validate required fields
-        if (!title && !description && !content && !image_path) {
-            return res.status(400).json({ message: 'At least one field must be provided for update' });
-        }
 
         // Find the post document
         const postDoc = await Post.findOne({
@@ -209,11 +210,25 @@ const HandleUpdatePost = async (req, res) => {
         // Find the specific post
         const post = postDoc.post.id(postId);
 
+        // Check if a new image was uploaded
+        if (req.file && req.file.s3) {
+            // Delete the old image if exists
+            if (post.image_path) {
+                const fileKey = extractS3KeyFromUrl(post.image_path);
+                if (fileKey) {
+                    console.log("Deleting old post image:", fileKey);
+                    await s3Upload.deleteFile(fileKey);
+                }
+            }
+            // Set the new image path
+            post.image_path = req.file.s3.url;
+        }
+        console.log("inside3", post.image_path)
+
         // Update fields if provided
         if (title) post.title = title;
         if (description) post.description = description;
         if (content) post.content = content;
-        if (image_path) post.image_path = image_path;
 
         await postDoc.save();
 
@@ -238,6 +253,18 @@ const HandleDeletePost = async (req, res) => {
 
         if (!postDoc) {
             return res.status(404).json({ message: 'Post not found or you do not have permission to delete it' });
+        }
+
+        // Find the specific post to delete its image first
+        const post = postDoc.post.id(postId);
+        
+        // Delete the image from S3 if it exists
+        if (post.image_path) {
+            const fileKey = extractS3KeyFromUrl(post.image_path);
+            if (fileKey) {
+                console.log("Deleting post image:", fileKey);
+                await s3Upload.deleteFile(fileKey);
+            }
         }
 
         // Remove the post from the array
@@ -417,6 +444,32 @@ const GetPostLikes = async (req, res) => {
     }
 };
 
+const HandlePostCount = async (req, res) => {
+    try {
+      const userId = req.params.id;
+
+      // Check if user exists
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({ message: 'User not found' });
+      }
+  
+      // Get user's posts with populated user data
+      const posts = await Post.findOne({ userid: userId })
+  
+      if (!posts) {
+        return res.status(200).json({ message: 'No posts found for this user', posts: [] });
+      }
+      
+      const PostCount = posts.post.length
+  
+      return res.status(200).json({ PostCount });
+    } catch (err) {
+      console.error('Error getting user posts:', err);
+      return res.status(500).json({ message: 'Internal server error' });
+    }
+  }
+
 module.exports = {
     HandlePandingPost,
     HandleAddAchievementPost,
@@ -427,5 +480,6 @@ module.exports = {
     GetUserPosts,
     GetPostComments,
     GetPostLikes,
-    HandleCheckUserLikeOrNot
+    HandleCheckUserLikeOrNot,
+    HandlePostCount
 }

@@ -14,6 +14,7 @@ const auth = require('../../middleware/auth');  // Authentication middleware
 const MulterConfig = require('../../config/Multer');
 const ImageRenderer = require('../../config/ImageRender');
 const MulterToS3 = require('../../middleware/multerToS3');
+const S3UploadHandler = require('../../middleware/s3Upload'); // Assuming you have a middleware for S3 upload
 
 // Initialize Multer
 const EventUpdate = new MulterConfig('./public/Events').upload();

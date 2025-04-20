@@ -10,7 +10,8 @@ const {
     GetUserPosts,
     GetPostComments,
     GetPostLikes,
-    HandleCheckUserLikeOrNot
+    HandleCheckUserLikeOrNot,
+    HandlePostCount
 } = require('../../Controllers/application/UserPost');
 const auth = require('../../middleware/auth');
 const MulterConfig = require('../../config/Multer');
@@ -33,7 +34,7 @@ router.get('/check-like/:postId', auth, HandleCheckUserLikeOrNot);
 router.post('/add', auth,PostUpdate.single('postImage'), s3Upload.uploadToS3('post'), HandleAddAchievementPost);
 
 // Update an existing post
-router.put('/update/:postId', auth, HandleUpdatePost);
+router.put('/update/:postId',auth, PostUpdate.single('image'), s3Upload.uploadToS3('post') , HandleUpdatePost);
 
 // Delete a post
 router.delete('/delete/:postId', auth, HandleDeletePost);
@@ -49,5 +50,7 @@ router.post('/comment/:postId', auth, HandleCommentPost);
 
 // Get all comments for a post
 router.get('/comments/:postId', auth, GetPostComments);
+
+router.get('/count/:id', auth, HandlePostCount);
 
 module.exports = router;

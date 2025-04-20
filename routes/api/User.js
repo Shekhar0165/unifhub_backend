@@ -38,6 +38,7 @@ router.put('/:id', auth,
 router.delete('/:id', auth, HandleDeleteUser);
 router.put('/password/:id', auth, HandleUpdatePassword);
 
+
 // Keep the image renderer for backward compatibility
 router.get('/:filename', (req, res) => ImageRender.renderImage(req, res));
 

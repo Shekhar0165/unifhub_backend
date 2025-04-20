@@ -336,18 +336,25 @@ const RecordImpression = async (req, res) => {
 /**
  * Get more feed items for infinite scrolling
  */
+// Get more feed items for infinite scrolling
+// Get more feed items for infinite scrolling
 const GetMoreFeedItems = async (req, res) => {
     try {
         const userId = req.user.id;
         const { page, limit = 10, viewedPosts = [] } = req.body;
+        console.log( page, limit, viewedPosts  )
         
         if (!page || page < 1) {
             return res.status(400).json({ message: 'Valid page number is required' });
         }
         
-        // Just call the main feed function with new parameters
-        req.body = { page, limit, lastSeen: viewedPosts };
-        return GetUserFeed(req, res);
+        // Create a new request object with the properties we need
+        const newReq = {
+            ...req,
+            body: { page, limit, lastSeen: viewedPosts }
+        };
+        
+        return GetUserFeed(newReq, res);
         
     } catch (err) {
         console.error('Error getting more feed items:', err);

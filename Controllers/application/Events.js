@@ -5,8 +5,11 @@ const mongoose = require("mongoose");
 const { addFirstEventAchievement } = require("./OrganizationJourney");
 const { addEventScore } = require("./OrganizationActivity");
 const Participants = require("../../models/Participants");
+const S3UploadHandler = require("../../middleware/s3Upload");
 
 // Add a new event
+const s3Upload = new S3UploadHandler('events'); // Initialize S3 upload handler for events files
+
 const HandleAddEvent = async (req, res) => {
     try {
         const {
@@ -98,22 +101,41 @@ const HandleUpdateEvents = async (req, res) => {
             return res.status(400).json({ message: "Invalid event ID" });
         }
 
+        // First, get the existing event to check if it has an image
+        const existingEvent = await Event.findById(eventId);
+        if (!existingEvent) {
+            return res.status(404).json({ message: "Event not found" });
+        }
+
         // Extract fields from req.body
         const updatedData = { ...req.body };
 
-        // If a file was uploaded, add S3 URL to updatedData
+        // If a new file was uploaded, delete the old one from S3 and update the path
         if (req.file && req.file.s3) {
+            // Delete old image if exists
+            if (existingEvent.image_path) {
+                // Extract the file key from the full URL
+                const fullUrl = existingEvent.image_path;
+                const urlParts = fullUrl.split('.com/');
+                
+                if (urlParts.length > 1) {
+                    const fileKey = urlParts[1]; // This gets just the key part
+                    console.log("Deleting old S3 file with key:", fileKey);
+                    await s3Upload.deleteFile(fileKey);
+                } else {
+                    console.error("Invalid image path format:", fullUrl);
+                }
+            }
+            
+            // Update with new image path
             updatedData.image_path = req.file.s3.url;
         }
 
         const updatedEvent = await Event.findByIdAndUpdate(eventId, updatedData, { new: true });
 
-        if (!updatedEvent) {
-            return res.status(404).json({ message: "Event not found" });
-        }
-
         res.status(200).json({ message: "Event updated successfully", event: updatedEvent });
     } catch (error) {
+        console.error("Error updating event:", error);
         res.status(500).json({ message: "Error updating event", error: error.message });
     }
 };
@@ -122,9 +144,7 @@ const HandleUpdateEvents = async (req, res) => {
 const HandleDeleteEvents = async (req, res) => {
     try {
         const { eventId } = req.params;
-        console.log("eventId", eventId)
         const authId = req.user.id;
-        console.log("authId", authId)
         
         if(!authId){
             return res.status(400).json({ message: "Invalid user ID" });
@@ -144,6 +164,24 @@ const HandleDeleteEvents = async (req, res) => {
         if (checkedEvent.length === 0) {
             return res.status(404).json({ message: "Event not found for this organization" });
         }
+
+        if(checkedEvent[0].image_path){
+            console.log("checkedEvent[0].image_path", checkedEvent[0].image_path);
+            if(checkedEvent[0].image_path) {
+                // Extract the file key from the full URL
+                const fullUrl = checkedEvent[0].image_path;
+                const urlParts = fullUrl.split('.com/');
+                
+                if (urlParts.length > 1) {
+                    const fileKey = urlParts[1]; // This gets just the key part
+                    console.log("Deleting S3 file with key:", fileKey);
+                    await s3Upload.deleteFile(fileKey);
+                } else {
+                    console.error("Invalid image path format:", fullUrl);
+                }
+            }
+        }
+
 
 
         await Event.findByIdAndDelete(eventId);
