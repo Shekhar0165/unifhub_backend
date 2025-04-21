@@ -5,7 +5,12 @@ const FollowSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         required: true
     },
-    list: [{  
+    entityType: {  // Add entityType field to know if the user being followed is a user or organization
+        type: String,
+        enum: ['user', 'organization'],
+        default: 'user'
+    },
+    list: [{
         followerid: {
             type: String
         },
@@ -17,13 +22,18 @@ const FollowSchema = new mongoose.Schema({
             type: String,
             // required: true,
         },
-        name:{
-            type:String,
-            require:true
+        name: {
+            type: String,
+            require: true
         },
-        userid:{
-            type:String,
-            require:true
+        userid: {
+            type: String,
+            require: true
+        },
+        entityType: {  // Add entityType field to know if the follower is a user or organization
+            type: String,
+            enum: ['user', 'organization'],
+            default: 'user'
         }
     }]
 }, { timestamps: true });

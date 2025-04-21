@@ -1,9 +1,25 @@
 const mongoose = require("mongoose");
 const User = require("../../models/User");
+const Organization = require("../../models/Organizations");
 const Follower = require("../../models/Follower");
 const Following = require("../../models/Following");
 
-// Helper function to add a user to the following list
+// Helper function to get entity (user or organization) by ID
+const getEntityById = async (id) => {
+    // Try to find as user first
+    let entity = await User.findById(id);
+    let entityType = "user";
+    
+    // If not found as user, try as organization
+    if (!entity) {
+        entity = await Organization.findById(id);
+        entityType = "organization";
+    }
+    
+    return { entity, entityType };
+};
+
+// Helper function to add a user/organization to the following list
 const HandleAddFollowing = async (followerid, userid) => {
     try {
         // ✅ Validate IDs
@@ -11,12 +27,12 @@ const HandleAddFollowing = async (followerid, userid) => {
             return { error: "Invalid User ID or Follower ID" };
         }
 
-        // ✅ Check if both users exist in the User collection
-        const userExists = await User.findById(userid);
-        const followerExists = await User.findById(followerid);
+        // ✅ Check if both entities exist and detect their types
+        const { entity: userExists, entityType: detectedEntityType } = await getEntityById(userid);
+        const { entity: followerExists, entityType: detectedFollowerType } = await getEntityById(followerid);
 
         if (!userExists || !followerExists) {
-            return { error: "User not registered on the platform" };
+            return { error: "Entity not registered on the platform" };
         }
 
         // ✅ Check if followerid already has a Following document
@@ -27,19 +43,21 @@ const HandleAddFollowing = async (followerid, userid) => {
             return { error: `Already following ${userExists.name}` };
         }
 
-        // ✅ Create new following entry
+        // ✅ Create new following entry using detected type
         const FollowingEntry = {
             followingid: userid,
             image_path: userExists.profileImage || "",
             bio: userExists.bio || "",
             name: userExists.name,
-            userid: userExists.userid
+            userid: userExists.userid,
+            entityType: detectedEntityType // Using detected type of entity being followed
         };
 
         if (!followerFollowingDoc) {
-            // ✅ If follower has no Following document, create one
+            // Create new Following document with detected follower type
             followerFollowingDoc = new Following({
                 userid: followerid,
+                entityType: detectedFollowerType, // Using detected type of follower
                 list: [FollowingEntry]
             });
         } else {
@@ -149,7 +167,7 @@ const HandleRemoveFollower = async (userid, followerid) => {
 const HandleAddFollower = async (req, res) => {
     try {
         const { userid } = req.body;
-        const followerid = req.user.id
+        const followerid = req.user.id;
 
         // ✅ Validate IDs
         if (!mongoose.Types.ObjectId.isValid(userid) || !mongoose.Types.ObjectId.isValid(followerid)) {
@@ -157,15 +175,15 @@ const HandleAddFollower = async (req, res) => {
         }
 
         if(userid === followerid){
-            return res.status(400).json({ error: "same User Can Not Follow you self" });
+            return res.status(400).json({ error: "Same User Can Not Follow themselves" });
         }
 
-        // ✅ Check if both users exist
-        const userExists = await User.findById(userid);
-        const followerExists = await User.findById(followerid);
+        // ✅ Check if both entities exist and get their types
+        const { entity: userExists, entityType: detectedEntityType } = await getEntityById(userid);
+        const { entity: followerExists, entityType: detectedFollowerType } = await getEntityById(followerid);
 
         if (!userExists || !followerExists) {
-            return res.status(404).json({ error: "User not registered on the platform" });
+            return res.status(404).json({ error: "Entity not registered on the platform" });
         }
 
         // ✅ Check if userid already has a Follower document
@@ -176,25 +194,28 @@ const HandleAddFollower = async (req, res) => {
             return res.status(400).json({ error: `Follower already follows ${userExists.name}` });
         }
 
-        // ✅ Create new follower entry
+        // ✅ Create new follower entry with the automatically detected follower type
         const FollowerEntry = {
             followerid: followerid,
-            image_path: followerExists.profileImage,
-            bio: followerExists.bio,
+            image_path: followerExists.profileImage || "",
+            bio: followerExists.bio || "",
             name: followerExists.name,
-            userid: followerExists.userid
+            userid: followerExists.userid,
+            entityType: detectedFollowerType // Using detected type for follower
         };
 
         if (!userFollowerDoc) {
+            // Create new Follower document with the automatically detected entity type
             userFollowerDoc = new Follower({
                 userid: userid,
+                entityType: detectedEntityType, // Using detected type for entity being followed
                 list: [FollowerEntry]
             });
         } else {
             userFollowerDoc.list.push(FollowerEntry);
         }
 
-        // ✅ Add to following list
+        // ✅ Add to following list - pass the detected types
         const followingResult = await HandleAddFollowing(followerid, userid);
 
         if (followingResult.error && followingResult.error !== `Already following ${userExists.name}`) {
@@ -203,7 +224,11 @@ const HandleAddFollower = async (req, res) => {
 
         await userFollowerDoc.save();
 
-        return res.status(200).json({ message: "Follower added successfully", success: true, data: userFollowerDoc });
+        return res.status(200).json({ 
+            message: "Follower added successfully", 
+            success: true, 
+            data: userFollowerDoc 
+        });
     } catch (err) {
         console.error(err.message);
         return res.status(500).json({ error: "Server error" });
@@ -246,9 +271,9 @@ const HandleCheckIsFollowed = async (req, res) => {
             return res.status(400).json({ error: "Invalid User ID or Follower ID" });
         }
 
-        // ✅ Check if both users exist
-        const userExists = await User.findById(userid);
-        const followerExists = await User.findById(followerid);
+        // ✅ Check if both entities exist
+        const { entity: userExists } = await getEntityById(userid);
+        const { entity: followerExists } = await getEntityById(followerid);
 
         if (!userExists || !followerExists) {
             return res.status(404).json({ error: "User not registered on the platform" });
@@ -266,12 +291,11 @@ const HandleCheckIsFollowed = async (req, res) => {
             return res.status(200).json({ isFollower: false });
         }
     }
-    catch (err) { // Added the 'err' parameter
+    catch (err) {
         console.error(err.message);
         return res.status(500).json({ error: "Server error" });
     }
 };
-
 
 const HandleGetFollowerAndFollowingList = async (req, res) => {
     try {
@@ -281,9 +305,9 @@ const HandleGetFollowerAndFollowingList = async (req, res) => {
             return res.status(400).json({ message: "User ID is required" });
         }
 
-        const user = await User.findById(id);
-        if (!user) {
-            return res.status(404).json({ message: "User not found" });
+        const { entity, entityType } = await getEntityById(id);
+        if (!entity) {
+            return res.status(404).json({ message: "Entity not found" });
         }
 
         const followers = await Follower.findOne({ userid: id });
@@ -293,14 +317,17 @@ const HandleGetFollowerAndFollowingList = async (req, res) => {
         const followingList = following?.list || [];
 
         console.log(followerList, followingList);
-        return res.status(200).json({ followerList, followingList });
+        return res.status(200).json({ 
+            entityType,
+            followerList, 
+            followingList 
+        });
 
     } catch (err) {
         console.error(err.message);
         return res.status(500).json({ error: "Server error" });
     }
 };
-
 
 module.exports = {
     HandleAddFollower,

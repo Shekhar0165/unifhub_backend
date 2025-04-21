@@ -4,6 +4,13 @@ const S3UploadHandler = require('../../middleware/s3Upload');
 // Initialize S3 upload handler for organization files
 const orgS3Handler = new S3UploadHandler('organizations');
 
+// Helper function to extract S3 key from URL
+const extractS3KeyFromUrl = (fullUrl) => {
+    if (!fullUrl) return null;
+    const urlParts = fullUrl.split('.com/');
+    return urlParts.length > 1 ? urlParts[1] : null;
+};
+
 // Get an organization by ID
 const HandleGetOrganization = async (req, res) => {
     try {
@@ -83,14 +90,36 @@ const HandleUpdateOrganization = async (req, res) => {
         }
         console.log(updates)
         
+        // Get the current organization to check existing images
+        const currentOrg = await Organization.findById(id);
+        if (!currentOrg) {
+            return res.status(404).json({ message: 'Organization not found' });
+        }
+        
         // Add file paths from S3 if files were uploaded
         if (req.files) {
             if (req.files.profileImage) {
-                // Use S3 URL instead of local path
+                // Delete old profile image if it exists
+                if (currentOrg.profileImage) {
+                    const fileKey = extractS3KeyFromUrl(currentOrg.profileImage);
+                    if (fileKey) {
+                        console.log("Deleting old profile image:", fileKey);
+                        await orgS3Handler.deleteFile(fileKey);
+                    }
+                }
+                // Use S3 URL for new image
                 updates.profileImage = req.files.profileImage[0].s3.url;
             }
             if (req.files.coverImage) {
-                // Use S3 URL instead of local path
+                // Delete old cover image if it exists
+                if (currentOrg.coverImage) {
+                    const fileKey = extractS3KeyFromUrl(currentOrg.coverImage);
+                    if (fileKey) {
+                        console.log("Deleting old cover image:", fileKey);
+                        await orgS3Handler.deleteFile(fileKey);
+                    }
+                }
+                // Use S3 URL for new image
                 updates.coverImage = req.files.coverImage[0].s3.url;
             }
         }
@@ -106,10 +135,6 @@ const HandleUpdateOrganization = async (req, res) => {
             { new: true, runValidators: true }
         );
         
-        if (!organization) {
-            return res.status(404).json({ message: 'Organization not found' });
-        }
-        
         res.status(200).json({ message: 'Organization updated successfully', organization });
     } catch (error) {
         console.error('Error updating organization:', error);
@@ -122,11 +147,33 @@ const HandleDeleteOrganization = async (req, res) => {
     try {
         const { id } = req.params;
         
-        const organization = await Organization.findByIdAndDelete(id);
+        // Find organization before deletion to get image paths
+        const organization = await Organization.findById(id);
         
         if (!organization) {
             return res.status(404).json({ message: 'Organization not found' });
         }
+        
+        // Delete profile image from S3 if exists
+        if (organization.profileImage) {
+            const profileImageKey = extractS3KeyFromUrl(organization.profileImage);
+            if (profileImageKey) {
+                console.log("Deleting profile image:", profileImageKey);
+                await orgS3Handler.deleteFile(profileImageKey);
+            }
+        }
+        
+        // Delete cover image from S3 if exists
+        if (organization.coverImage) {
+            const coverImageKey = extractS3KeyFromUrl(organization.coverImage);
+            if (coverImageKey) {
+                console.log("Deleting cover image:", coverImageKey);
+                await orgS3Handler.deleteFile(coverImageKey);
+            }
+        }
+        
+        // Delete organization from database
+        await Organization.findByIdAndDelete(id);
         
         res.status(200).json({ message: 'Organization deleted successfully' });
     } catch (error) {
