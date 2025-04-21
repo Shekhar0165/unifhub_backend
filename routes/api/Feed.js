@@ -1,14 +1,14 @@
 const express = require('express');
 const router = express.Router();
 const {
-    GetUserFeed,
+    GetEnhancedUserFeed,
     RecordImpression,
     GetMoreFeedItems
 } = require('../../Controllers/application/Feed');
 const auth = require('../../middleware/auth');
 
 // Get user feed
-router.get('/', auth, GetUserFeed);
+router.get('/', auth, GetEnhancedUserFeed);
 
 // Load more feed items
 router.post('/more', auth, GetMoreFeedItems);

@@ -52,9 +52,14 @@ const HandleSearchUser = async (req, res) => {
       return res.status(400).json({ success: false, message: "Search query is required." });
     }
 
-    // Search users by `userid` using case-insensitive regex
+    // Search users by `userid` or `name` using case-insensitive regex (starts with)
     const members = await User.find(
-      { userid: { $regex: `^${query}`, $options: "i" } } // Optimized regex for starts-with matching
+      {
+        $or: [
+          { userid: { $regex: `^${query}`, $options: "i" } },
+          { name: { $regex: `^${query}`, $options: "i" } }
+        ]
+      }
     ).limit(10);
 
     return res.status(200).json({ success: true, members });
@@ -63,6 +68,7 @@ const HandleSearchUser = async (req, res) => {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 };
+
 
 // Helper function to extract S3 key from a URL
 const extractS3KeyFromUrl = (url) => {

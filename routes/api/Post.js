@@ -11,7 +11,8 @@ const {
     GetPostComments,
     GetPostLikes,
     HandleCheckUserLikeOrNot,
-    HandlePostCount
+    HandlePostCount,
+    HandleGetUserPostById
 } = require('../../Controllers/application/UserPost');
 const auth = require('../../middleware/auth');
 const MulterConfig = require('../../config/Multer');
@@ -28,6 +29,7 @@ router.get('/user/:id', auth, GetUserPosts);
 
 // Get pending posts
 router.get('/pending', auth, HandlePandingPost);
+router.post('/:postId', auth, HandleGetUserPostById);
 router.get('/check-like/:postId', auth, HandleCheckUserLikeOrNot);
 
 // Add a new post

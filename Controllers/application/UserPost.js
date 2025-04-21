@@ -31,11 +31,13 @@ const GetUserPosts = async (req, res) => {
 
         // Get user's posts with populated user data
         const posts = await Post.findOne({ userid: userId })
-            .populate('userid', 'name email profileImage');
+            .populate('userid', 'name email profileImage userid');
 
         if (!posts) {
             return res.status(200).json({ message: 'No posts found for this user', posts: [] });
         }
+
+        console.log(posts)
 
         return res.status(200).json({ posts });
     } catch (err) {
@@ -470,6 +472,47 @@ const HandlePostCount = async (req, res) => {
     }
   }
 
+const HandleGetUserPostById = async (req, res) => {
+    try {
+        const userId = req.body.userid; // Assuming auth middleware sets user
+        const postId = req.params.postId;
+        console.log(userId, postId)
+
+        const NewUser = await User.find({
+            userid: userId
+        });
+
+        const newId = NewUser[0]._id.toString()
+        console.log(newId)
+
+        // Find post document for the user
+        const postDoc = await Post.findOne({ 
+            userid: newId,
+            'post._id': postId 
+        }).populate('userid', 'name email profileImage userid');
+
+        if (!postDoc) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+
+        // Get the specific post from the posts array
+        const post = postDoc.post.id(postId);
+        if (!post) {
+            return res.status(404).json({ message: 'Post not found' });
+        }
+
+        return res.status(200).json({ 
+            post: {
+                ...post.toObject(),
+                user: postDoc.userid
+            }
+        });
+    } catch (err) {
+        console.error('Error getting user post:', err);
+        return res.status(500).json({ message: 'Internal server error' });
+    }
+}
+
 module.exports = {
     HandlePandingPost,
     HandleAddAchievementPost,
@@ -481,5 +524,6 @@ module.exports = {
     GetPostComments,
     GetPostLikes,
     HandleCheckUserLikeOrNot,
-    HandlePostCount
+    HandlePostCount,
+    HandleGetUserPostById
 }
