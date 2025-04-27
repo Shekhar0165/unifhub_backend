@@ -73,10 +73,12 @@ const HandlePandingPost = async (req, res) => {
 
 // Add a new post
 const HandleAddAchievementPost = async (req, res) => {
+    console.log("inside1")
     try {
         console.log("started")
         const userId = req.user.id;
         const { title, description, content, isAchievementPosted, achievementid } = req.body;
+        console.log("inside", req.body)
 
         if (!title || !description || !content) {
             return res.status(400).json({ message: 'All required fields must be provided' });

@@ -29,7 +29,7 @@ router.get('/user/:id', auth, GetUserPosts);
 
 // Get pending posts
 router.get('/pending', auth, HandlePandingPost);
-router.post('/:postId', auth, HandleGetUserPostById);
+router.post('/user/one/:postId', auth, HandleGetUserPostById);
 router.get('/check-like/:postId', auth, HandleCheckUserLikeOrNot);
 
 // Add a new post
