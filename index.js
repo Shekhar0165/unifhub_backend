@@ -9,7 +9,10 @@ const ErrorHandler = require('./middleware/ErrorHandle');
 const Logger = require('./middleware/logger');
 const cookieParser = require("cookie-parser");
 const cron = require('node-cron');
+const { createServer } = require('http');
+const { Server } = require('socket.io');
 const { scheduleDailyUpdate } = require('./Controllers/application/OrganizationJourney');
+const { HandleContectUser,HandleJoinChat } = require('./Controllers/application/Chat');
 
 dbconnect.connect()
 .then(() => console.log('Database connected successfully'))
@@ -17,30 +20,27 @@ dbconnect.connect()
     console.error('Database connection failed', err);
     process.exit(1);
 });
+
 const app = express();
-
-
-
+const httpServer = createServer(app);
+const io = new Server(httpServer, {
+    cors: {
+        origin: corsOptions.origin,
+        credentials: true
+    }
+});
 // Use credentials middleware before CORS
 app.use(credentialsMiddleware);
-
-   
 app.use(cors(corsOptions));
-
 app.use(cookieParser());
 
 // Middleware to parse JSON and URL-encoded data
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-
 // Create an instance of the Logger class and use requestLogger
 const logger = new Logger();
-
 app.use(logger.requestLogger);
-
-
-// Define a route
 
 // Routes 
 app.use('/', require('./routes/Register'));
@@ -63,7 +63,19 @@ app.use(('/follower'),require('./routes/api/follower'))
 app.use('/post', require('./routes/api/Post'))
 app.use('/feed', require('./routes/api/Feed'))
 app.use('/follow-suggestion',require('./routes/api/FollowerSuggestion'))
+// app.use('/chat', require('./routes/api/Chat'));
 
+
+io.on('connection', (socket) => {
+    console.log('New client connected');
+    socket.on('connet_chart', async (data) => {
+        console.log("sendMessage",data);
+    });
+    HandleJoinChat(socket,io);
+    socket.on('disconnect', () => {
+        console.log('Client disconnected');
+    });
+});
 
 app.get("/", (req, res) => {
     res.send("Hello, World!");
@@ -155,6 +167,6 @@ cron.schedule('0 3 * * *', async () => {
 
 // Start the server
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+httpServer.listen(PORT, () => {
     console.log(`Server is running on http://localhost:${PORT}`);
 });

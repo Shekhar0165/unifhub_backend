@@ -63,6 +63,8 @@ const HandlePandingPost = async (req, res) => {
             return res.status(404).json({ message: 'No pending posts found' });
         }
 
+        console.log("pendingPost",pendingPosts)
+
         res.status(200).json({ pendingPosts });
     }
     catch (err) {
@@ -73,49 +75,63 @@ const HandlePandingPost = async (req, res) => {
 
 // Add a new post
 const HandleAddAchievementPost = async (req, res) => {
-    console.log("inside1")
+    console.log("inside1");
     try {
-        console.log("started")
+        console.log("started");
         const userId = req.user.id;
-        const { title, description, content, isAchievementPosted, achievementid } = req.body;
-        console.log("inside", req.body)
-
+        const { title, description, content, isAchievementPosted, isAchivementPosted, achievementid } = req.body;
+        console.log("inside", req.body);
+        
         if (!title || !description || !content) {
             return res.status(400).json({ message: 'All required fields must be provided' });
         }
-
+        
         let image_path = "";
         if (req.file && req.file.s3) {
             // Use S3 URL instead of local path
             image_path = req.file.s3.url;
         }
-
+        
         // Check if user exists
         const user = await User.findById(userId);
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-
+        
         // If it's an achievement post, validate achievementid
-        if (isAchievementPosted === true) {
+        // Converting isAchievementPosted to a proper boolean to avoid comparison issues
+        // Check for both the correctly spelled and misspelled versions of the field
+        const isAchievement = isAchievementPosted === true || 
+                             isAchievementPosted === "true" || 
+                             isAchivementPosted === true || 
+                             isAchivementPosted === "true";
+        
+        if (isAchievement) {
+            console.log("yes this is ac post");
+            
             // Need to import mongoose at the top of the file
             if (!achievementid || !mongoose.Types.ObjectId.isValid(achievementid)) {
                 return res.status(400).json({ message: 'Valid Achievement ID is required for achievement posts' });
             }
             
-            console.log("inside2", achievementid)
+            console.log("inside2", achievementid);
             const userResume = await UserResume.findOne({
                 UserId: userId,
-                'Journey._id': achievementid
+                'Journey._id': new mongoose.Types.ObjectId(achievementid)
             });
+            
             // Find the specific achievement in the Journey array
-            const achievement = userResume?.Journey?.find(item => item._id.toString() === achievementid);
-        
-            if (!userResume) {
+            const achievement = userResume?.Journey?.find(
+                item => item._id.toString() === achievementid
+            );
+            
+            if (!userResume || !achievement) {
                 return res.status(404).json({ message: 'Achievement not found in user resume' });
             }
         }
-
+        
+        console.log("inside2 between 2 and 3", userId, isAchievement);
+        
         // Create new post object
         const newPost = {
             title,
@@ -124,16 +140,20 @@ const HandleAddAchievementPost = async (req, res) => {
             image_path,
             likes: [],
             comments: [],
-            isAchievementPosted: isAchievementPosted || false // Fixed spelling
+            isAchievementPosted: isAchievement // Ensure consistent boolean value
         };
 
-        if (isAchievementPosted === true) {
+        console.log("new post inside infinity ", newPost);
+        
+        if (isAchievement) {
             newPost.achievementid = achievementid;
+            newPost.isAchivementPosted = isAchievement; // Ensure consistent boolean value
         }
-
+        console.log("inside3", newPost);
+        
         // Find or create the user's Post document
         let userPost = await Post.findOne({ userid: userId });
-
+        
         if (!userPost) {
             userPost = new Post({
                 userid: userId,
@@ -142,29 +162,30 @@ const HandleAddAchievementPost = async (req, res) => {
         } else {
             userPost.post.unshift(newPost);
         }
-
+        
+        // Save the post
+        await userPost.save(); 
+        
         // Update achievement status only if it's an achievement post
-        if (isAchievementPosted === true) { 
+        if (isAchievement) {
             await UserResume.findOneAndUpdate(
-                { UserId: userId, 'Journey._id': achievementid },
+                { UserId: userId, 'Journey._id': new mongoose.Types.ObjectId(achievementid) },
                 { $set: { 'Journey.$[elem].isPosted': true } },
-                { 
-                    arrayFilters: [{ 'elem._id': achievementid }],
+                {
+                    arrayFilters: [{ 'elem._id':new mongoose.Types.ObjectId(achievementid) }],
                     new: true
                 }
             );
         }
         
-        await userPost.save();
-
+        
         return res.status(201).json({ message: 'Post added successfully', post: newPost });
-
+        
     } catch (err) {
         console.error('Error adding post:', err);
         return res.status(500).json({ message: 'Internal server error', error: err.message });
     }
 };
-
 const HandleCheckUserLikeOrNot = async (req, res) => {
     try {
         console.log("inside")
